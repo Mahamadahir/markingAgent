@@ -160,6 +160,23 @@ scripts/build_macos.sh
 
 Build on the target operating system. Use Ubuntu to produce the Linux build, and macOS to produce the `.app` bundle.
 
+### Ubuntu Qt Dependencies
+
+If the app fails with `Could not load the Qt platform plugin "xcb"`, install the missing Qt/XCB runtime packages:
+
+```bash
+sudo apt update
+sudo apt install -y libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 libegl1 libgl1
+```
+
+Then run the app again:
+
+```bash
+python -m marking_agent.desktop_app
+```
+
+The packaged app uses the same system display libraries, so fix this before testing `dist/GradeAudit/GradeAudit`.
+
 ## State Saving
 
 Runtime state is stored in SQLite:
