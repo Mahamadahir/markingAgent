@@ -12,6 +12,7 @@ from marking_agent.state import (
     AI_GENERATED,
     APPROVED,
     connect_database,
+    create_exam,
     evaluation_from_record,
     get_record,
     initialise_database,
@@ -77,8 +78,10 @@ class StorageTests(unittest.TestCase):
     def test_build_csv_row_serialises_structured_evaluation(self):
         evaluation = sample_evaluation()
 
-        row = build_csv_row("STUDENT_001", "Q1", evaluation, "APPROVED", "2", "Approved")
+        row = build_csv_row("STUDENT_001", "Q1", evaluation, "APPROVED", "2", "Approved", "exam-1", "Biology")
 
+        self.assertEqual(row["Exam ID"], "exam-1")
+        self.assertEqual(row["Exam Name"], "Biology")
         self.assertEqual(json.loads(row["Provisional AI Output"]), evaluation)
 
     def test_exports_final_records_to_csv(self):
@@ -88,6 +91,7 @@ class StorageTests(unittest.TestCase):
             connection = create_test_database(db_path)
             save_human_decision(
                 connection,
+                "default",
                 "STUDENT_001",
                 "Q1",
                 sample_evaluation(),
@@ -100,6 +104,7 @@ class StorageTests(unittest.TestCase):
 
             with csv_path.open("r", newline="", encoding="utf-8") as file:
                 rows = list(csv.DictReader(file))
+            self.assertEqual(rows[0]["Exam ID"], "default")
             self.assertEqual(rows[0]["Student ID"], "STUDENT_001")
             self.assertEqual(rows[0]["Human Action"], APPROVED)
             self.assertEqual(rows[0]["Final Score"], "2")
@@ -110,8 +115,8 @@ class StateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             connection = create_test_database(Path(directory) / "state.sqlite3")
 
-            save_provisional_evaluation(connection, "STUDENT_001", "Q1", sample_evaluation())
-            record = get_record(connection, "STUDENT_001", "Q1")
+            save_provisional_evaluation(connection, "default", "STUDENT_001", "Q1", sample_evaluation())
+            record = get_record(connection, "default", "STUDENT_001", "Q1")
 
             self.assertEqual(record["status"], AI_GENERATED)
             self.assertEqual(evaluation_from_record(record), sample_evaluation())
@@ -120,10 +125,11 @@ class StateTests(unittest.TestCase):
     def test_updates_provisional_record_with_human_decision(self):
         with tempfile.TemporaryDirectory() as directory:
             connection = create_test_database(Path(directory) / "state.sqlite3")
-            save_provisional_evaluation(connection, "STUDENT_001", "Q1", sample_evaluation())
+            save_provisional_evaluation(connection, "default", "STUDENT_001", "Q1", sample_evaluation())
 
             save_human_decision(
                 connection,
+                "default",
                 "STUDENT_001",
                 "Q1",
                 sample_evaluation(),
@@ -131,7 +137,7 @@ class StateTests(unittest.TestCase):
                 "2",
                 "Approved AI assessment.",
             )
-            record = get_record(connection, "STUDENT_001", "Q1")
+            record = get_record(connection, "default", "STUDENT_001", "Q1")
 
             self.assertTrue(is_final_record(record))
             self.assertEqual(record["status"], APPROVED)
@@ -142,6 +148,7 @@ class StateTests(unittest.TestCase):
             connection = create_test_database(Path(directory) / "state.sqlite3")
             save_human_decision(
                 connection,
+                "default",
                 "STUDENT_001",
                 "Q1",
                 sample_evaluation(),
@@ -152,11 +159,29 @@ class StateTests(unittest.TestCase):
             changed = sample_evaluation()
             changed["proposed_marks_awarded"] = 1
 
-            save_provisional_evaluation(connection, "STUDENT_001", "Q1", changed)
-            record = get_record(connection, "STUDENT_001", "Q1")
+            save_provisional_evaluation(connection, "default", "STUDENT_001", "Q1", changed)
+            record = get_record(connection, "default", "STUDENT_001", "Q1")
 
             self.assertEqual(record["status"], APPROVED)
             self.assertEqual(evaluation_from_record(record)["proposed_marks_awarded"], 2)
+
+    def test_records_are_isolated_by_exam(self):
+        with tempfile.TemporaryDirectory() as directory:
+            connection = create_test_database(Path(directory) / "state.sqlite3")
+            biology_id = create_exam(connection, "Biology Paper 1", exam_id="biology")
+            chemistry_id = create_exam(connection, "Chemistry Paper 1", exam_id="chemistry")
+
+            save_provisional_evaluation(connection, biology_id, "STUDENT_001", "Q1", sample_evaluation())
+            changed = sample_evaluation()
+            changed["proposed_marks_awarded"] = 1
+            save_provisional_evaluation(connection, chemistry_id, "STUDENT_001", "Q1", changed)
+
+            biology_record = get_record(connection, biology_id, "STUDENT_001", "Q1")
+            chemistry_record = get_record(connection, chemistry_id, "STUDENT_001", "Q1")
+
+            self.assertEqual(evaluation_from_record(biology_record)["proposed_marks_awarded"], 2)
+            self.assertEqual(evaluation_from_record(chemistry_record)["proposed_marks_awarded"], 1)
+
 
 
 def sample_evaluation():

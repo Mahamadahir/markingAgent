@@ -40,8 +40,10 @@ def validate_student_data(data):
             raise ValueError(f"Student entry {index} must include exam_responses object.")
 
 
-def build_csv_row(student_id, question_id, evaluation, action, final_score, notes):
+def build_csv_row(student_id, question_id, evaluation, action, final_score, notes, exam_id="", exam_name=""):
     return {
+        "Exam ID": exam_id,
+        "Exam Name": exam_name,
         "Student ID": student_id,
         "Question ID": question_id,
         "Provisional AI Output": json.dumps(evaluation, ensure_ascii=False, sort_keys=True),
@@ -53,6 +55,8 @@ def build_csv_row(student_id, question_id, evaluation, action, final_score, note
 
 def record_to_csv_row(record):
     return {
+        "Exam ID": record.get("exam_id", ""),
+        "Exam Name": record.get("exam_name", ""),
         "Student ID": record["student_id"],
         "Question ID": record["question_id"],
         "Provisional AI Output": record["provisional_ai_output"],

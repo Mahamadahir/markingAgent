@@ -1,6 +1,6 @@
 # Marking Agent
 
-A human-reviewed exam grading CLI and desktop prototype. It extracts the mark scheme to text, keeps handwritten exam papers as PDF references, sends one student answer and one mark-scheme snippet to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
+A human-reviewed exam grading CLI and desktop prototype. It supports multiple exam projects, extracts the mark scheme to text, keeps handwritten exam papers as PDF references, sends one student answer and one mark-scheme snippet to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
 
 ## Status
 
@@ -73,6 +73,35 @@ Total: 3 marks
 - 1 mark for ...
 ```
 
+## Exam Projects
+
+The SQLite database can hold multiple exams. Each grading record belongs to an `exam_id`, so students and question IDs from separate exams do not mix.
+
+Create or reuse an exam by name when grading:
+
+```bash
+python main.py grade \
+  --exam-name "Biology Paper 1" \
+  --mark-scheme data/extracted/biology_paper_1_mark_scheme.txt \
+  --students data/input/biology_paper_1_students.json \
+  --output data/output/biology_paper_1.csv
+```
+
+List exams stored in the state database:
+
+```bash
+python main.py list-exams
+```
+
+Export one exam by ID, or all exams:
+
+```bash
+python main.py export-csv --exam-id biology-paper-1
+python main.py export-csv --all-exams --output data/output/all_exams.csv
+```
+
+The desktop app has an exam name field on Project Setup. Loading a project creates or reuses that exam in SQLite.
+
 ## PDF Extraction
 
 Only the mark scheme is converted to text:
@@ -120,7 +149,7 @@ Run it from the activated virtual environment:
 python -m marking_agent.desktop_app
 ```
 
-The desktop app uses the same SQLite state database and CSV export path as the CLI.
+The desktop app uses the same SQLite state database and CSV export path as the CLI. The exam name field scopes grading state to one exam project.
 
 Build scripts are included for platform-specific packaging:
 
@@ -139,7 +168,7 @@ Runtime state is stored in SQLite:
 data/output/grading_state.sqlite3
 ```
 
-The app saves provisional AI evaluations before asking for human approval. If the process stops after the AI response but before approval, running the same command resumes from the saved provisional evaluation instead of calling the API again.
+The app saves provisional AI evaluations before asking for human approval. Records are scoped by exam project. If the process stops after the AI response but before approval, running the same command resumes from the saved provisional evaluation instead of calling the API again.
 
 Final records are stored as:
 

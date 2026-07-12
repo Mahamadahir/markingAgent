@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .config import (
     DEFAULT_DB_PATH,
+    DEFAULT_EXAM_NAME,
     DEFAULT_MARK_SCHEME_PATH,
     DEFAULT_MODEL_ENV,
     DEFAULT_OUTPUT_PATH,
@@ -23,11 +24,13 @@ from .state import (
     APPROVED,
     OVERRIDDEN,
     connect_database,
+    ensure_exam,
     evaluation_from_record,
     get_record,
     initialise_database,
     is_final_record,
     iter_records,
+    list_exams,
     save_human_decision,
     save_provisional_evaluation,
 )
@@ -41,19 +44,26 @@ def parse_args():
     grade_parser = subparsers.add_parser("grade", help="Run the human-reviewed grading flow.")
     add_grading_arguments(grade_parser)
 
-    extract_parser = subparsers.add_parser("extract-pdf", help="Extract selectable text from a PDF.")
+    extract_parser = subparsers.add_parser("extract-pdf", help="Extract selectable text from a mark scheme PDF.")
     extract_parser.add_argument("pdf_path")
     extract_parser.add_argument("output_path")
 
     export_parser = subparsers.add_parser("export-csv", help="Export finalised grades from SQLite to CSV.")
     export_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
     export_parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
+    export_parser.add_argument("--exam-id", type=str, default="")
+    export_parser.add_argument("--all-exams", action="store_true")
+
+    list_parser = subparsers.add_parser("list-exams", help="List exams in the SQLite state database.")
+    list_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
 
     add_grading_arguments(parser)
     return parser.parse_args()
 
 
 def add_grading_arguments(parser):
+    parser.add_argument("--exam-id", type=str, default="")
+    parser.add_argument("--exam-name", type=str, default=DEFAULT_EXAM_NAME)
     parser.add_argument("--mark-scheme", type=str, default=str(DEFAULT_MARK_SCHEME_PATH))
     parser.add_argument("--students", type=str, default=str(DEFAULT_STUDENTS_PATH))
     parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
@@ -62,7 +72,7 @@ def add_grading_arguments(parser):
     parser.add_argument(
         "--no-resume",
         action="store_true",
-        help="Re-grade entries already present in the SQLite state database.",
+        help="Re-grade entries already present in the selected exam.",
     )
 
 
@@ -99,8 +109,8 @@ def prompt_override_reason():
         print("Override reason is required.")
 
 
-def get_or_create_evaluation(connection, args, client_holder, student_id, question_id, student_answer, mark_scheme):
-    existing_record = get_record(connection, student_id, question_id)
+def get_or_create_evaluation(connection, exam_id, args, client_holder, student_id, question_id, student_answer, mark_scheme):
+    existing_record = get_record(connection, exam_id, student_id, question_id)
     if existing_record and not args.no_resume:
         if is_final_record(existing_record):
             print(f"Skipping already finalised record: {student_id} | {question_id}")
@@ -123,12 +133,12 @@ def get_or_create_evaluation(connection, args, client_holder, student_id, questi
         student_answer,
         mark_scheme_snippet,
     )
-    save_provisional_evaluation(connection, student_id, question_id, evaluation, force=args.no_resume)
+    save_provisional_evaluation(connection, exam_id, student_id, question_id, evaluation, force=args.no_resume)
     return evaluation
 
 
-def export_finalised_records(connection, output_path):
-    records = iter_records(connection, final_only=True)
+def export_finalised_records(connection, output_path, exam_id=None):
+    records = iter_records(connection, exam_id=exam_id, final_only=True)
     export_records_to_csv(records, output_path)
     return len(records)
 
@@ -143,9 +153,17 @@ def grade_all(args):
     student_data = load_student_data(students_path)
     connection = connect_database(db_path)
     initialise_database(connection)
+    exam_id = ensure_exam(
+        connection,
+        exam_id=args.exam_id or None,
+        name=args.exam_name,
+        mark_scheme_path=str(mark_scheme_path),
+        students_path=str(students_path),
+    )
     client_holder = {"client": None}
 
     try:
+        print(f"Exam: {args.exam_name} ({exam_id})")
         for student_entry in student_data:
             student_id = student_entry["student_id"]
             responses = student_entry["exam_responses"]
@@ -154,6 +172,7 @@ def grade_all(args):
                 print(f"\nRunning evaluation: {student_id} | {question_id}")
                 evaluation = get_or_create_evaluation(
                     connection,
+                    exam_id,
                     args,
                     client_holder,
                     student_id,
@@ -179,8 +198,8 @@ def grade_all(args):
                     final_score = prompt_score("Input overridden numeric score", total_marks)
                     notes = prompt_override_reason()
 
-                save_human_decision(connection, student_id, question_id, evaluation, action, final_score, notes)
-                exported_count = export_finalised_records(connection, output_path)
+                save_human_decision(connection, exam_id, student_id, question_id, evaluation, action, final_score, notes)
+                exported_count = export_finalised_records(connection, output_path, exam_id=exam_id)
                 print(f"Recorded: {student_id} | {question_id}")
                 print(f"Exported {exported_count} finalised record(s) to {output_path}")
     finally:
@@ -197,10 +216,21 @@ def export_csv_command(args):
     connection = connect_database(Path(args.db))
     initialise_database(connection)
     try:
-        exported_count = export_finalised_records(connection, Path(args.output))
+        exam_id = None if args.all_exams else args.exam_id or None
+        exported_count = export_finalised_records(connection, Path(args.output), exam_id=exam_id)
     finally:
         connection.close()
     print(f"Exported {exported_count} finalised record(s) to {args.output}")
+
+
+def list_exams_command(args):
+    connection = connect_database(Path(args.db))
+    initialise_database(connection)
+    try:
+        for exam in list_exams(connection):
+            print(f"{exam['exam_id']}\t{exam['name']}")
+    finally:
+        connection.close()
 
 
 def main():
@@ -212,6 +242,8 @@ def main():
             extract_pdf_command(args)
         elif command == "export-csv":
             export_csv_command(args)
+        elif command == "list-exams":
+            list_exams_command(args)
         else:
             grade_all(args)
     except (FileNotFoundError, RuntimeError, ValueError) as error:

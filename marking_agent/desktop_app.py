@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from .app_service import AppService, normalise_action
-from .config import DEFAULT_DB_PATH, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH
+from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH
 from .grading import render_evaluation
 from .state import APPROVED, OVERRIDDEN
 
@@ -104,6 +104,7 @@ def run():
             title.setObjectName("title")
             layout.addWidget(title)
 
+            self.exam_name = QLineEdit(DEFAULT_EXAM_NAME)
             self.mark_scheme_pdf = FilePicker("Mark scheme PDF", "data/input/mark_scheme.pdf")
             self.question_paper_pdf = FilePicker("Question paper PDF reference", "data/input/question_paper.pdf")
             self.students_json = FilePicker("Student responses JSON", "students_exams.json")
@@ -111,6 +112,12 @@ def run():
             self.database_path = QLineEdit(str(DEFAULT_DB_PATH))
             self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
             self.model_name = QLineEdit(DEFAULT_MODEL_ENV)
+
+            exam_card = QFrame()
+            exam_layout = QGridLayout(exam_card)
+            exam_layout.addWidget(QLabel("Exam name"), 0, 0)
+            exam_layout.addWidget(self.exam_name, 1, 0)
+            layout.addWidget(self.card(exam_card))
 
             self.students_json.set_text("students_exams.json")
             self.mark_scheme_text.set_text("data/extracted/mark_scheme.txt")
@@ -231,8 +238,8 @@ def run():
             header.addWidget(export_button)
             layout.addLayout(header)
 
-            self.results_table = QTableWidget(0, 6)
-            self.results_table.setHorizontalHeaderLabels(["Student", "Question", "Status", "Action", "Score", "Notes"])
+            self.results_table = QTableWidget(0, 7)
+            self.results_table.setHorizontalHeaderLabels(["Exam", "Student", "Question", "Status", "Action", "Score", "Notes"])
             self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             layout.addWidget(self.results_table, 1)
             self.stack.addWidget(screen)
@@ -281,7 +288,17 @@ def run():
         def load_project(self):
             try:
                 self.service.close()
-                self.service = AppService(self.database_path.text(), self.output_path.text())
+                self.service = AppService(
+                    self.database_path.text(),
+                    self.output_path.text(),
+                    exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
+                )
+                self.service.set_exam(
+                    exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
+                    mark_scheme_path=self.mark_scheme_text.text(),
+                    question_paper_path=self.question_paper_pdf.text(),
+                    students_path=self.students_json.text(),
+                )
                 self.exam_items = self.service.load_exam_items(self.students_json.text())
                 self.item_list.clear()
                 for item in self.exam_items:
@@ -356,6 +373,7 @@ def run():
             self.results_table.setRowCount(len(records))
             for row, record in enumerate(records):
                 values = [
+                    record.get("exam_name", ""),
                     record["student_id"],
                     record["question_id"],
                     record["status"],
