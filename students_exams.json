@@ -1,0 +1,9 @@
+[
+  {
+    "student_id": "STUDENT_001",
+    "exam_responses": {
+      "Q1": "Photosynthesis uses light energy to turn carbon dioxide and water into glucose and oxygen.",
+      "Q2": "A variable is a named place to store a value, such as score = 10, and the value can change later."
+    }
+  }
+]

@@ -1,0 +1,10 @@
+# Q1
+Total: 2 marks
+- 1 mark for identifying that photosynthesis uses light energy.
+- 1 mark for stating that carbon dioxide and water are converted into glucose and oxygen.
+
+# Q2
+Total: 3 marks
+- 1 mark for defining a variable as a named storage location.
+- 1 mark for explaining that the stored value can change during program execution.
+- 1 mark for giving a relevant programming example.
