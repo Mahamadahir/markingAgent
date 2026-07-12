@@ -1,0 +1,220 @@
+import argparse
+import sys
+from pathlib import Path
+
+from .config import (
+    DEFAULT_DB_PATH,
+    DEFAULT_MARK_SCHEME_PATH,
+    DEFAULT_MODEL_ENV,
+    DEFAULT_OUTPUT_PATH,
+    DEFAULT_STUDENTS_PATH,
+)
+from .grading import (
+    call_grading_agent,
+    create_openai_client,
+    decimal_from_value,
+    format_decimal,
+    render_evaluation,
+    validate_score_range,
+)
+from .mark_scheme import extract_mark_scheme_snippet
+from .pdf_extract import extract_pdf_text, write_extracted_text
+from .state import (
+    APPROVED,
+    OVERRIDDEN,
+    connect_database,
+    evaluation_from_record,
+    get_record,
+    initialise_database,
+    is_final_record,
+    iter_records,
+    save_human_decision,
+    save_provisional_evaluation,
+)
+from .storage import export_records_to_csv, load_mark_scheme, load_student_data
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Human-reviewed exam grading CLI.")
+    subparsers = parser.add_subparsers(dest="command")
+
+    grade_parser = subparsers.add_parser("grade", help="Run the human-reviewed grading flow.")
+    add_grading_arguments(grade_parser)
+
+    extract_parser = subparsers.add_parser("extract-pdf", help="Extract selectable text from a PDF.")
+    extract_parser.add_argument("pdf_path")
+    extract_parser.add_argument("output_path")
+
+    export_parser = subparsers.add_parser("export-csv", help="Export finalised grades from SQLite to CSV.")
+    export_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
+    export_parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
+
+    add_grading_arguments(parser)
+    return parser.parse_args()
+
+
+def add_grading_arguments(parser):
+    parser.add_argument("--mark-scheme", type=str, default=str(DEFAULT_MARK_SCHEME_PATH))
+    parser.add_argument("--students", type=str, default=str(DEFAULT_STUDENTS_PATH))
+    parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
+    parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
+    parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Re-grade entries already present in the SQLite state database.",
+    )
+
+
+def prompt_action():
+    while True:
+        action = input("Enter decision ('APPROVE' or 'OVERRIDE'): ").strip().upper()
+        if action == "APPROVE":
+            return APPROVED
+        if action == "OVERRIDE":
+            return OVERRIDDEN
+        print("Decision must be APPROVE or OVERRIDE.")
+
+
+def prompt_score(prompt, total_marks, default=None):
+    suffix = f" [{default}]" if default else ""
+    while True:
+        raw_value = input(f"{prompt}{suffix}: ").strip()
+        if not raw_value and default:
+            raw_value = default
+
+        try:
+            score = decimal_from_value(raw_value)
+            validate_score_range(score, total_marks)
+            return format_decimal(score)
+        except ValueError as error:
+            print(f"Invalid score: {error}")
+
+
+def prompt_override_reason():
+    while True:
+        reason = input("Provide mandatory audit reason for override: ").strip()
+        if reason:
+            return reason
+        print("Override reason is required.")
+
+
+def get_or_create_evaluation(connection, args, client_holder, student_id, question_id, student_answer, mark_scheme):
+    existing_record = get_record(connection, student_id, question_id)
+    if existing_record and not args.no_resume:
+        if is_final_record(existing_record):
+            print(f"Skipping already finalised record: {student_id} | {question_id}")
+            return None
+        print(f"Resuming saved provisional evaluation: {student_id} | {question_id}")
+        return evaluation_from_record(existing_record)
+
+    mark_scheme_snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
+    if mark_scheme_snippet == mark_scheme.strip():
+        print(f"Warning: no specific mark scheme snippet found for {question_id}.")
+
+    if client_holder["client"] is None:
+        client_holder["client"] = create_openai_client()
+
+    evaluation = call_grading_agent(
+        client_holder["client"],
+        args.model,
+        student_id,
+        question_id,
+        student_answer,
+        mark_scheme_snippet,
+    )
+    save_provisional_evaluation(connection, student_id, question_id, evaluation, force=args.no_resume)
+    return evaluation
+
+
+def export_finalised_records(connection, output_path):
+    records = iter_records(connection, final_only=True)
+    export_records_to_csv(records, output_path)
+    return len(records)
+
+
+def grade_all(args):
+    mark_scheme_path = Path(args.mark_scheme)
+    students_path = Path(args.students)
+    db_path = Path(args.db)
+    output_path = Path(args.output)
+
+    mark_scheme = load_mark_scheme(mark_scheme_path)
+    student_data = load_student_data(students_path)
+    connection = connect_database(db_path)
+    initialise_database(connection)
+    client_holder = {"client": None}
+
+    try:
+        for student_entry in student_data:
+            student_id = student_entry["student_id"]
+            responses = student_entry["exam_responses"]
+
+            for question_id, student_answer in responses.items():
+                print(f"\nRunning evaluation: {student_id} | {question_id}")
+                evaluation = get_or_create_evaluation(
+                    connection,
+                    args,
+                    client_holder,
+                    student_id,
+                    question_id,
+                    student_answer,
+                    mark_scheme,
+                )
+                if evaluation is None:
+                    continue
+
+                print()
+                print(render_evaluation(evaluation))
+                print()
+
+                total_marks = decimal_from_value(evaluation["total_marks_available"])
+                proposed_score = format_decimal(decimal_from_value(evaluation["proposed_marks_awarded"]))
+                action = prompt_action()
+
+                if action == APPROVED:
+                    final_score = prompt_score("Confirm numeric score to log", total_marks, proposed_score)
+                    notes = "Approved AI assessment."
+                else:
+                    final_score = prompt_score("Input overridden numeric score", total_marks)
+                    notes = prompt_override_reason()
+
+                save_human_decision(connection, student_id, question_id, evaluation, action, final_score, notes)
+                exported_count = export_finalised_records(connection, output_path)
+                print(f"Recorded: {student_id} | {question_id}")
+                print(f"Exported {exported_count} finalised record(s) to {output_path}")
+    finally:
+        connection.close()
+
+
+def extract_pdf_command(args):
+    pages = extract_pdf_text(Path(args.pdf_path))
+    write_extracted_text(pages, Path(args.output_path))
+    print(f"Extracted {len(pages)} page(s) to {args.output_path}")
+
+
+def export_csv_command(args):
+    connection = connect_database(Path(args.db))
+    initialise_database(connection)
+    try:
+        exported_count = export_finalised_records(connection, Path(args.output))
+    finally:
+        connection.close()
+    print(f"Exported {exported_count} finalised record(s) to {args.output}")
+
+
+def main():
+    args = parse_args()
+    command = args.command or "grade"
+
+    try:
+        if command == "extract-pdf":
+            extract_pdf_command(args)
+        elif command == "export-csv":
+            export_csv_command(args)
+        else:
+            grade_all(args)
+    except (FileNotFoundError, RuntimeError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    return 0
