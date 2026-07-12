@@ -1,0 +1,402 @@
+import sys
+from pathlib import Path
+
+from .app_service import AppService, normalise_action
+from .config import DEFAULT_DB_PATH, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH
+from .grading import render_evaluation
+from .state import APPROVED, OVERRIDDEN
+
+
+def run():
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import (
+            QApplication,
+            QFileDialog,
+            QFrame,
+            QGridLayout,
+            QHBoxLayout,
+            QHeaderView,
+            QLabel,
+            QLineEdit,
+            QListWidget,
+            QListWidgetItem,
+            QMainWindow,
+            QMessageBox,
+            QPushButton,
+            QSplitter,
+            QStackedWidget,
+            QTableWidget,
+            QTableWidgetItem,
+            QTextEdit,
+            QVBoxLayout,
+            QWidget,
+        )
+    except ImportError as error:
+        raise RuntimeError("Desktop UI requires PySide6. Run: pip install -r requirements.txt") from error
+
+    class FilePicker(QWidget):
+        def __init__(self, label, placeholder):
+            super().__init__()
+            self.input = QLineEdit()
+            self.input.setPlaceholderText(placeholder)
+            self.button = QPushButton("Choose")
+            layout = QGridLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(QLabel(label), 0, 0, 1, 2)
+            layout.addWidget(self.input, 1, 0)
+            layout.addWidget(self.button, 1, 1)
+            self.button.clicked.connect(self.choose_file)
+
+        def choose_file(self):
+            path, _ = QFileDialog.getOpenFileName(self, "Choose file")
+            if path:
+                self.input.setText(path)
+
+        def text(self):
+            return self.input.text().strip()
+
+        def set_text(self, value):
+            self.input.setText(str(value))
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("GradeAudit AI Assistant")
+            self.resize(1280, 820)
+            self.service = AppService(DEFAULT_DB_PATH, DEFAULT_OUTPUT_PATH)
+            self.exam_items = []
+            self.current_item = None
+            self.current_evaluation = None
+
+            self.stack = QStackedWidget()
+            self.nav = QListWidget()
+            self.nav.setFixedWidth(240)
+            self.nav.addItems(["Project Setup", "Extraction Review", "Grading Workspace", "Results"])
+            self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+
+            root = QWidget()
+            root_layout = QHBoxLayout(root)
+            root_layout.setContentsMargins(0, 0, 0, 0)
+            root_layout.addWidget(self.nav)
+            root_layout.addWidget(self.stack, 1)
+
+            self.setup_screen()
+            self.extraction_screen()
+            self.grading_screen()
+            self.results_screen()
+
+            self.setCentralWidget(root)
+            self.nav.setCurrentRow(0)
+            self.apply_theme()
+
+        def closeEvent(self, event):
+            self.service.close()
+            super().closeEvent(event)
+
+        def setup_screen(self):
+            screen = QWidget()
+            layout = QVBoxLayout(screen)
+            layout.setContentsMargins(20, 20, 20, 20)
+            layout.setSpacing(12)
+
+            title = QLabel("Project Setup")
+            title.setObjectName("title")
+            layout.addWidget(title)
+
+            self.mark_scheme_pdf = FilePicker("Mark scheme PDF", "data/input/mark_scheme.pdf")
+            self.question_paper_pdf = FilePicker("Question paper PDF reference", "data/input/question_paper.pdf")
+            self.students_json = FilePicker("Student responses JSON", "students_exams.json")
+            self.mark_scheme_text = FilePicker("Extracted mark scheme text", "data/extracted/mark_scheme.txt")
+            self.database_path = QLineEdit(str(DEFAULT_DB_PATH))
+            self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
+            self.model_name = QLineEdit(DEFAULT_MODEL_ENV)
+
+            self.students_json.set_text("students_exams.json")
+            self.mark_scheme_text.set_text("data/extracted/mark_scheme.txt")
+
+            for widget in [self.mark_scheme_pdf, self.question_paper_pdf, self.students_json, self.mark_scheme_text]:
+                layout.addWidget(self.card(widget))
+
+            paths_card = QFrame()
+            paths_layout = QGridLayout(paths_card)
+            paths_layout.addWidget(QLabel("SQLite state"), 0, 0)
+            paths_layout.addWidget(self.database_path, 1, 0)
+            paths_layout.addWidget(QLabel("CSV export"), 2, 0)
+            paths_layout.addWidget(self.output_path, 3, 0)
+            paths_layout.addWidget(QLabel("Model"), 4, 0)
+            paths_layout.addWidget(self.model_name, 5, 0)
+            layout.addWidget(self.card(paths_card))
+
+            actions = QHBoxLayout()
+            extract_button = QPushButton("Extract Mark Scheme")
+            load_button = QPushButton("Load Project")
+            extract_button.clicked.connect(self.extract_project_pdfs)
+            load_button.clicked.connect(self.load_project)
+            actions.addStretch()
+            actions.addWidget(extract_button)
+            actions.addWidget(load_button)
+            layout.addLayout(actions)
+            layout.addStretch()
+            self.stack.addWidget(screen)
+
+        def extraction_screen(self):
+            screen = QWidget()
+            layout = QVBoxLayout(screen)
+            layout.setContentsMargins(20, 20, 20, 20)
+            title = QLabel("Extraction Review")
+            title.setObjectName("title")
+            layout.addWidget(title)
+
+            splitter = QSplitter(Qt.Horizontal)
+            self.extracted_document_list = QListWidget()
+            self.extracted_text = QTextEdit()
+            self.pdf_preview_note = QTextEdit()
+            self.pdf_preview_note.setReadOnly(True)
+            self.pdf_preview_note.setText("Question paper stays as a PDF reference because exam papers are handwritten. Only review and edit extracted mark scheme text here.")
+            splitter.addWidget(self.extracted_document_list)
+            splitter.addWidget(self.extracted_text)
+            splitter.addWidget(self.pdf_preview_note)
+            splitter.setSizes([220, 650, 330])
+            layout.addWidget(splitter, 1)
+
+            save_button = QPushButton("Save Extracted Text")
+            save_button.clicked.connect(self.save_extracted_text)
+            layout.addWidget(save_button, alignment=Qt.AlignRight)
+            self.extracted_document_list.currentRowChanged.connect(self.load_extracted_document)
+            self.stack.addWidget(screen)
+
+        def grading_screen(self):
+            screen = QWidget()
+            layout = QVBoxLayout(screen)
+            layout.setContentsMargins(20, 20, 20, 20)
+            title = QLabel("Grading Workspace")
+            title.setObjectName("title")
+            layout.addWidget(title)
+
+            splitter = QSplitter(Qt.Horizontal)
+            self.item_list = QListWidget()
+            self.item_list.currentRowChanged.connect(self.select_exam_item)
+
+            centre = QWidget()
+            centre_layout = QVBoxLayout(centre)
+            self.student_answer = QTextEdit()
+            self.student_answer.setReadOnly(True)
+            self.ai_evaluation = QTextEdit()
+            self.ai_evaluation.setReadOnly(True)
+            centre_layout.addWidget(QLabel("Student Answer"))
+            centre_layout.addWidget(self.student_answer, 1)
+            centre_layout.addWidget(QLabel("Provisional AI Evaluation"))
+            centre_layout.addWidget(self.ai_evaluation, 1)
+
+            inspector = QWidget()
+            inspector_layout = QVBoxLayout(inspector)
+            self.score_input = QLineEdit()
+            self.notes_input = QTextEdit()
+            grade_button = QPushButton("Run AI Evaluation")
+            approve_button = QPushButton("Approve")
+            override_button = QPushButton("Override")
+            grade_button.clicked.connect(self.run_ai_evaluation)
+            approve_button.clicked.connect(lambda: self.save_decision(APPROVED))
+            override_button.clicked.connect(lambda: self.save_decision(OVERRIDDEN))
+            inspector_layout.addWidget(QLabel("Final Score"))
+            inspector_layout.addWidget(self.score_input)
+            inspector_layout.addWidget(QLabel("Notes"))
+            inspector_layout.addWidget(self.notes_input, 1)
+            inspector_layout.addWidget(grade_button)
+            inspector_layout.addWidget(approve_button)
+            inspector_layout.addWidget(override_button)
+
+            splitter.addWidget(self.item_list)
+            splitter.addWidget(centre)
+            splitter.addWidget(inspector)
+            splitter.setSizes([260, 720, 300])
+            layout.addWidget(splitter, 1)
+            self.stack.addWidget(screen)
+
+        def results_screen(self):
+            screen = QWidget()
+            layout = QVBoxLayout(screen)
+            layout.setContentsMargins(20, 20, 20, 20)
+            header = QHBoxLayout()
+            title = QLabel("Results")
+            title.setObjectName("title")
+            refresh_button = QPushButton("Refresh")
+            export_button = QPushButton("Export CSV")
+            refresh_button.clicked.connect(self.refresh_results)
+            export_button.clicked.connect(self.export_csv)
+            header.addWidget(title)
+            header.addStretch()
+            header.addWidget(refresh_button)
+            header.addWidget(export_button)
+            layout.addLayout(header)
+
+            self.results_table = QTableWidget(0, 6)
+            self.results_table.setHorizontalHeaderLabels(["Student", "Question", "Status", "Action", "Score", "Notes"])
+            self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            layout.addWidget(self.results_table, 1)
+            self.stack.addWidget(screen)
+
+        def card(self, widget):
+            frame = QFrame()
+            frame.setObjectName("card")
+            layout = QVBoxLayout(frame)
+            layout.addWidget(widget)
+            return frame
+
+        def extract_project_pdfs(self):
+            try:
+                if not self.mark_scheme_pdf.text():
+                    QMessageBox.warning(self, "Missing mark scheme", "Choose a mark scheme PDF first.")
+                    return
+                output = self.mark_scheme_text.text() or "data/extracted/mark_scheme.txt"
+                self.service.extract_pdf(self.mark_scheme_pdf.text(), output)
+                self.add_extracted_document(output)
+                QMessageBox.information(self, "Extraction complete", "Mark scheme text extraction finished. Question papers remain as PDF references.")
+            except Exception as error:
+                self.show_error(error)
+
+        def add_extracted_document(self, path):
+            item = QListWidgetItem(str(path))
+            item.setData(Qt.UserRole, str(path))
+            self.extracted_document_list.addItem(item)
+
+        def load_extracted_document(self, row):
+            item = self.extracted_document_list.item(row)
+            if not item:
+                return
+            path = Path(item.data(Qt.UserRole))
+            if path.exists():
+                self.extracted_text.setPlainText(path.read_text(encoding="utf-8"))
+
+        def save_extracted_text(self):
+            item = self.extracted_document_list.currentItem()
+            if not item:
+                return
+            path = Path(item.data(Qt.UserRole))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.extracted_text.toPlainText(), encoding="utf-8")
+            QMessageBox.information(self, "Saved", f"Saved {path}")
+
+        def load_project(self):
+            try:
+                self.service.close()
+                self.service = AppService(self.database_path.text(), self.output_path.text())
+                self.exam_items = self.service.load_exam_items(self.students_json.text())
+                self.item_list.clear()
+                for item in self.exam_items:
+                    self.item_list.addItem(f"{item['student_id']} | {item['question_id']} | {item['status']}")
+                if Path(self.mark_scheme_text.text()).exists():
+                    self.add_extracted_document(self.mark_scheme_text.text())
+                self.refresh_results()
+                self.nav.setCurrentRow(2)
+            except Exception as error:
+                self.show_error(error)
+
+        def select_exam_item(self, row):
+            if row < 0 or row >= len(self.exam_items):
+                return
+            self.current_item = self.exam_items[row]
+            self.current_evaluation = self.service.get_saved_evaluation(
+                self.current_item["student_id"],
+                self.current_item["question_id"],
+            )
+            self.student_answer.setPlainText(self.current_item["answer"])
+            self.ai_evaluation.setPlainText("")
+            self.score_input.clear()
+            self.notes_input.clear()
+            if self.current_evaluation:
+                self.render_current_evaluation()
+
+        def run_ai_evaluation(self):
+            if not self.current_item:
+                return
+            try:
+                self.current_evaluation = self.service.grade_item(
+                    self.model_name.text(),
+                    self.mark_scheme_text.text(),
+                    self.current_item,
+                )
+                self.render_current_evaluation()
+                self.refresh_results()
+            except Exception as error:
+                self.show_error(error)
+
+        def render_current_evaluation(self):
+            self.ai_evaluation.setPlainText(render_evaluation(self.current_evaluation))
+            self.score_input.setText(str(self.current_evaluation["proposed_marks_awarded"]))
+
+        def save_decision(self, action):
+            if not self.current_item or not self.current_evaluation:
+                QMessageBox.warning(self, "No evaluation", "Run or select an AI evaluation first.")
+                return
+            try:
+                action = normalise_action(action)
+                notes = self.notes_input.toPlainText().strip()
+                if action == OVERRIDDEN and not notes:
+                    QMessageBox.warning(self, "Override reason required", "Enter notes before overriding.")
+                    return
+                if action == APPROVED and not notes:
+                    notes = "Approved AI assessment."
+                self.service.save_decision(
+                    self.current_item["student_id"],
+                    self.current_item["question_id"],
+                    self.current_evaluation,
+                    action,
+                    self.score_input.text(),
+                    notes,
+                )
+                self.load_project()
+                self.nav.setCurrentRow(2)
+            except Exception as error:
+                self.show_error(error)
+
+        def refresh_results(self):
+            records = self.service.records(final_only=False)
+            self.results_table.setRowCount(len(records))
+            for row, record in enumerate(records):
+                values = [
+                    record["student_id"],
+                    record["question_id"],
+                    record["status"],
+                    record["human_action"] or "",
+                    record["final_score"] or "",
+                    record["notes"] or "",
+                ]
+                for column, value in enumerate(values):
+                    self.results_table.setItem(row, column, QTableWidgetItem(value))
+
+        def export_csv(self):
+            try:
+                count = self.service.export_csv(self.output_path.text())
+                QMessageBox.information(self, "Export complete", f"Exported {count} finalised record(s).")
+            except Exception as error:
+                self.show_error(error)
+
+        def show_error(self, error):
+            QMessageBox.critical(self, "GradeAudit", str(error))
+
+        def apply_theme(self):
+            self.setStyleSheet(
+                """
+                QWidget { background: #f9f9ff; color: #181c23; font-family: Inter, Arial, sans-serif; font-size: 13px; }
+                QListWidget { background: #f1f3fe; border: 0; padding: 8px; }
+                QListWidget::item { padding: 8px; border-radius: 4px; }
+                QListWidget::item:selected { background: #d8e2ff; color: #001a41; }
+                QFrame#card, QTextEdit, QLineEdit, QTableWidget { background: #ffffff; border: 1px solid #c1c6d7; border-radius: 4px; }
+                QTextEdit, QLineEdit { padding: 8px; }
+                QPushButton { background: #0058bc; color: #ffffff; border: 0; border-radius: 4px; padding: 8px 12px; }
+                QPushButton:hover { background: #0070eb; }
+                QLabel#title { font-size: 18px; font-weight: 600; padding-bottom: 8px; }
+                QHeaderView::section { background: #e6e8f3; padding: 8px; border: 0; border-right: 1px solid #c1c6d7; }
+                """
+            )
+
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

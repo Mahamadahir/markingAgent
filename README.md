@@ -1,6 +1,6 @@
 # Marking Agent
 
-A human-reviewed exam grading CLI. It extracts text from PDFs, sends one student answer and one mark-scheme snippet to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
+A human-reviewed exam grading CLI and desktop prototype. It extracts the mark scheme to text, keeps handwritten exam papers as PDF references, sends one student answer and one mark-scheme snippet to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
 
 ## Status
 
@@ -15,7 +15,7 @@ marking_agent/
   config.py                # default paths and CSV columns
   grading.py               # OpenAI call, schema, score validation
   mark_scheme.py           # question-specific mark scheme extraction
-  pdf_extract.py           # selectable-text PDF extraction
+  pdf_extract.py           # selectable-text mark scheme PDF extraction
   state.py                 # SQLite state saving
   storage.py               # JSON loading and CSV export
 data/
@@ -75,14 +75,15 @@ Total: 3 marks
 
 ## PDF Extraction
 
-For selectable-text PDFs:
+Only the mark scheme is converted to text:
 
 ```bash
 python main.py extract-pdf data/input/mark_scheme.pdf data/extracted/mark_scheme.txt
-python main.py extract-pdf data/input/question_paper.pdf data/extracted/question_paper.txt
 ```
 
-Scanned PDFs need OCR or vision extraction before grading. `pypdf` only extracts embedded text.
+Question papers and handwritten exam papers stay as PDFs. Do not convert handwritten exam papers to text with this pipeline. Student responses still need to be provided in `students_exams.json` until a separate handwriting/OCR workflow is added.
+
+`pypdf` only extracts embedded text from selectable PDFs, so scanned mark schemes need OCR first.
 
 ## Grading
 
@@ -103,6 +104,32 @@ python main.py grade \
 ```
 
 The model output is provisional. The CLI requires a human to approve or override every score before it becomes final.
+
+## Desktop App
+
+The desktop shell uses PySide6 and follows the `GradeAudit AI Assistant` Stitch project screens:
+
+- Project Setup
+- Extraction Review
+- Grading Workspace
+- Results
+
+Run it from the activated virtual environment:
+
+```bash
+python -m marking_agent.desktop_app
+```
+
+The desktop app uses the same SQLite state database and CSV export path as the CLI.
+
+Build scripts are included for platform-specific packaging:
+
+```bash
+scripts/build_ubuntu.sh
+scripts/build_macos.sh
+```
+
+Build on the target operating system. Use Ubuntu to produce the Linux build, and macOS to produce the `.app` bundle.
 
 ## State Saving
 
