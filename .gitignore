@@ -17,4 +17,5 @@ data/output/*
 build/
 dist/
 *.spec
+!GradeAudit.spec
 graphify-out/
