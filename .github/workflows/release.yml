@@ -16,10 +16,10 @@ jobs:
             asset: GradeAudit-linux-x86_64
           - os: windows-latest
             asset: GradeAudit-windows-x86_64
-          - os: macos-13
-            asset: GradeAudit-macos-intel
-          - os: macos-14
-            asset: GradeAudit-macos-arm64
+          # macOS build paused until the self-hosted M1 mac mini runner is set up.
+          # Re-enable with the self-hosted runner:
+          # - os: [self-hosted, macOS, ARM64]
+          #   asset: GradeAudit-macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
