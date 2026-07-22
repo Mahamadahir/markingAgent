@@ -35,7 +35,17 @@
 
 ### Inputs
 - Multi-student single PDF splitting (one scanned batch file into per-student scripts).
-- Roster mapping: map filenames to real student names from an imported roster.
+- Roster mapping: map filenames to real student names from an imported roster. Prerequisite for cross-exam student history.
 - Anonymised marking: strip or redact names before grading, re-attach after.
+
+### Topics and history (exploring)
+- Topic labelling per question: tag each question with the topic it covers (model-derived in a pass over the mark scheme, or manual). Independent of the DB work; enables topic-level analytics and longitudinal feedback. Smallest, highest-value of this group — do first.
+- History-aware feedback sheets: generate per-student feedback from a student's finalised records across all exams, so it can discuss trends and improvement. Needs persistent student identity (roster mapping) and benefits from topic labelling. Data-protection note: sending a full student history to an external LLM is sensitive personal data — decide provider/retention deliberately.
+
+### Institutional / multi-user (product pivot — decide direction first)
+- These turn the local single-user tool into a shared service. Do not build piecemeal onto the desktop app; confirm the product direction before starting.
+- PostgreSQL as a database option. The hinge for multi-user. Introduce a data-access layer (SQLAlchemy Core or a repository interface) once, targeting SQLite (local) or Postgres (shared) via a connection URL, rather than hand-porting the raw SQL in `state.py` to two dialects.
+- Multi-user with departments. Organisation → department → user model, exams scoped to a department, roles (marker, moderator, admin), per-department usage tracking and quotas. Needs Postgres and auth (likely institution SSO).
+- Server-side single API key. For an institutional shared key the key must move server-side and every model call be brokered by a backend — never distributed to desktop clients. This effectively requires growing a server, with the desktop or a web client as a thin authenticated front-end.
 
 Note: the input items and any LMS integration are only worth building if the real workflow hits them. Do not build speculatively.
