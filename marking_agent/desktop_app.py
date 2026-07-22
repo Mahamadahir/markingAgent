@@ -17,7 +17,7 @@ from .config import (
     provider_settings,
 )
 from .pdf_extract import OCR_MODES
-from .grading import render_evaluation
+from .grading import LOW_CONFIDENCE_THRESHOLD, render_evaluation
 from .state import APPROVED, OVERRIDDEN
 
 
@@ -365,7 +365,7 @@ def run():
                 )
                 self.item_list.clear()
                 for item in self.exam_items:
-                    self.item_list.addItem(f"{item['student_id']} | {item['question_id']} | {item['status']}")
+                    self.item_list.addItem(self.item_label(item))
                 if Path(self.mark_scheme_text.text()).exists():
                     self.add_extracted_document(self.mark_scheme_text.text())
                 self.refresh_results()
@@ -396,6 +396,16 @@ def run():
             self.azure_api_version_label.setVisible(is_azure)
             if not self.model_name.text().strip():
                 self.model_name.setText(default_model_for_provider(provider))
+
+        def item_label(self, item):
+            confidence = item.get("confidence")
+            if confidence is None:
+                suffix = ""
+            elif confidence < LOW_CONFIDENCE_THRESHOLD:
+                suffix = f" | {confidence:.0%} LOW - REVIEW"
+            else:
+                suffix = f" | {confidence:.0%}"
+            return f"{item['student_id']} | {item['question_id']} | {item['status']}{suffix}"
 
         def apply_stored_provider(self):
             stored = self.service.stored_provider()

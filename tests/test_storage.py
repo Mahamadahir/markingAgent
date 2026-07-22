@@ -18,6 +18,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(row["Exam ID"], "exam-1")
         self.assertEqual(row["Exam Name"], "Biology")
         self.assertEqual(json.loads(row["Provisional AI Output"]), evaluation)
+        self.assertEqual(row["Confidence"], "0.90")
 
     def test_exports_final_records_to_csv(self):
         with tempfile.TemporaryDirectory() as directory:

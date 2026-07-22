@@ -154,6 +154,12 @@ python main.py grade \
 
 The model output is provisional. The CLI requires a human to approve or override every score before it becomes final.
 
+### Confidence Flagging
+
+Each evaluation includes a confidence between 0 and 1 for how certain the model is of the proposed marks. Low confidence signals illegible handwriting, an ambiguous answer, or a mark scheme that does not clearly cover the response. Confidence appears in the provisional evaluation output and in the CSV export, and low-confidence items are flagged.
+
+In the desktop app, the Grading Workspace queue sorts provisional low-confidence items to the top so the least certain grades are reviewed first, and each row shows its confidence with a `LOW - REVIEW` marker below the threshold.
+
 ### Question-Level Grading
 
 The question IDs come from the mark scheme headings (`# Q1`, `Question 2`, and similar). Each student script is graded once per question, against that question's mark scheme snippet, and stored as a separate record. If the mark scheme has no question headings, the whole script is graded once as a single `FULL_SCRIPT` item.

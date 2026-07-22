@@ -56,6 +56,7 @@ CSV_FIELDNAMES = [
     "Student ID",
     "Question ID",
     "Provisional AI Output",
+    "Confidence",
     "Human Action",
     "Final Score",
     "Notes",

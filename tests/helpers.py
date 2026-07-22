@@ -14,6 +14,7 @@ def sample_evaluation():
         "deviation_notes": "",
         "total_marks_available": 2,
         "proposed_marks_awarded": 2,
+        "confidence": 0.9,
         "criteria_breakdown": [],
     }
 
@@ -42,8 +43,8 @@ class FakeProvider:
         self._payload = json.dumps(evaluation)
         self.calls = []
 
-    def complete_json(self, system_prompt, user_text, image_data_urls=None):
-        self.calls.append((system_prompt, user_text, image_data_urls))
+    def complete_json(self, system_prompt, user_text, schema, image_data_urls=None):
+        self.calls.append((system_prompt, user_text, schema, image_data_urls))
         return self._payload
 
 

@@ -9,6 +9,7 @@
 - Page-to-question mapping: a per-script classification pass labels each page with the questions answered on it, so grading a question sends only its pages, with a whole-script fallback when the map is uncertain.
 - Persist provider and model per exam (not the API key). Saved on the exam record and restored into the desktop dropdown when a project loads.
 - OCR for scanned mark schemes. Extraction has a per-run mode (never / auto / always) using Tesseract; auto runs OCR only on pages with no embedded text.
+- Confidence flagging: each grade carries a model confidence; low-confidence provisional items sort to the top of the desktop review queue and are flagged, and confidence is included in the CSV export.
 
 ## Next
 1. Verify Claude and Gemini against live APIs. Both paths are correct by construction but unproven; Gemini relies on prompt-injected schema rather than native enforcement, so it is the most likely to return malformed JSON. This now also covers the page classification pass.
@@ -17,7 +18,6 @@
 ## Backlog
 
 ### Trust and grading quality
-- Confidence flagging: model returns a confidence per grade; surface low-confidence items at the top of the review queue.
 - Multi-model consensus: grade each item with two providers and flag disagreements for human review.
 - Rubric calibration pass: grade teacher-marked sample scripts first, show divergence, tune the scheme before the full run.
 - Re-grade a single item from the desktop (different model or edited scheme) instead of `--no-resume` for the whole run.

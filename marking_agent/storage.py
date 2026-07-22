@@ -2,6 +2,7 @@ import csv
 import json
 
 from .config import CSV_FIELDNAMES
+from .grading import confidence_value
 
 
 def load_text_file(path, description):
@@ -14,6 +15,11 @@ def load_mark_scheme(path):
     return load_text_file(path, "Mark scheme")
 
 
+def format_confidence(evaluation):
+    confidence = confidence_value(evaluation)
+    return "" if confidence is None else f"{confidence:.2f}"
+
+
 def build_csv_row(student_id, question_id, evaluation, action, final_score, notes, exam_id="", exam_name=""):
     return {
         "Exam ID": exam_id,
@@ -21,6 +27,7 @@ def build_csv_row(student_id, question_id, evaluation, action, final_score, note
         "Student ID": student_id,
         "Question ID": question_id,
         "Provisional AI Output": json.dumps(evaluation, ensure_ascii=False, sort_keys=True),
+        "Confidence": format_confidence(evaluation),
         "Human Action": action,
         "Final Score": final_score,
         "Notes": notes,
@@ -28,12 +35,14 @@ def build_csv_row(student_id, question_id, evaluation, action, final_score, note
 
 
 def record_to_csv_row(record):
+    evaluation = json.loads(record["provisional_ai_output"])
     return {
         "Exam ID": record.get("exam_id", ""),
         "Exam Name": record.get("exam_name", ""),
         "Student ID": record["student_id"],
         "Question ID": record["question_id"],
         "Provisional AI Output": record["provisional_ai_output"],
+        "Confidence": format_confidence(evaluation),
         "Human Action": record["human_action"] or "",
         "Final Score": record["final_score"] or "",
         "Notes": record["notes"] or "",

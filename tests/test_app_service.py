@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest import mock
 
 from marking_agent import app_service
-from marking_agent.app_service import AppService, normalise_action
+from marking_agent.app_service import AppService, normalise_action, review_sort_key
 from marking_agent.pdf_submissions import FULL_SCRIPT_QUESTION_ID
 from marking_agent.state import APPROVED, OVERRIDDEN, save_provisional_evaluation
 from tests.helpers import FakeProvider, full_script_evaluation, write_submissions
@@ -22,6 +22,20 @@ class NormaliseActionTests(unittest.TestCase):
     def test_rejects_unknown_action(self):
         with self.assertRaises(ValueError):
             normalise_action("reject")
+
+
+class ReviewSortTests(unittest.TestCase):
+    def test_low_confidence_provisional_items_come_first(self):
+        items = [
+            {"student_id": "A", "status": "APPROVED", "confidence": 0.2},
+            {"student_id": "B", "status": "AI_GENERATED", "confidence": 0.9},
+            {"student_id": "C", "status": "AI_GENERATED", "confidence": 0.3},
+            {"student_id": "D", "status": "PENDING", "confidence": None},
+        ]
+
+        ordered = [item["student_id"] for item in sorted(items, key=review_sort_key)]
+
+        self.assertEqual(ordered, ["C", "B", "D", "A"])
 
 
 class AppServiceTests(unittest.TestCase):

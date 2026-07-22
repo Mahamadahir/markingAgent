@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH
 from .grading import (
+    confidence_value,
     decimal_from_value,
     format_decimal,
     grade_pdf_images,
@@ -76,6 +77,7 @@ class AppService:
             question_id = submission["question_id"]
             record = get_record(self.connection, self.exam_id, student_id, question_id)
             status = record["status"] if record else "PENDING"
+            confidence = confidence_value(evaluation_from_record(record)) if record else None
             items.append(
                 {
                     "exam_id": self.exam_id,
@@ -83,8 +85,10 @@ class AppService:
                     "question_id": question_id,
                     "pdf_path": submission["pdf_path"],
                     "status": status,
+                    "confidence": confidence,
                 }
             )
+        items.sort(key=review_sort_key)
         return items
 
     def get_saved_evaluation(self, student_id, question_id):
@@ -180,6 +184,12 @@ class AppService:
 
     def records(self, final_only=False, exam_id=None):
         return iter_records(self.connection, exam_id=exam_id or self.exam_id, final_only=final_only)
+
+
+def review_sort_key(item):
+    is_final = item["status"] in {APPROVED, OVERRIDDEN}
+    confidence = item.get("confidence")
+    return (is_final, confidence if confidence is not None else 2.0)
 
 
 def normalise_action(action):
