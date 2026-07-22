@@ -2,7 +2,10 @@ import unittest
 from decimal import Decimal
 
 from marking_agent.grading import (
+    build_consensus,
+    consensus_disagreement,
     is_low_confidence,
+    needs_review,
     validate_evaluation,
     validate_score_range,
 )
@@ -46,6 +49,31 @@ class ConfidenceTests(unittest.TestCase):
 
     def test_missing_confidence_is_not_flagged(self):
         self.assertFalse(is_low_confidence({"student_id": "STUDENT_001"}))
+
+
+class ConsensusTests(unittest.TestCase):
+    def test_agreement_within_tolerance(self):
+        consensus = build_consensus(
+            [evaluation(proposed_marks_awarded=2), evaluation(proposed_marks_awarded=2)],
+            ["gpt-4o", "gpt-4o-mini"],
+        )
+
+        self.assertTrue(consensus["agreement"])
+        self.assertEqual([m["model"] for m in consensus["models"]], ["gpt-4o", "gpt-4o-mini"])
+
+    def test_disagreement_when_marks_differ(self):
+        consensus = build_consensus(
+            [evaluation(proposed_marks_awarded=2), evaluation(proposed_marks_awarded=0)],
+            ["gpt-4o", "gpt-4o-mini"],
+        )
+
+        self.assertFalse(consensus["agreement"])
+        self.assertTrue(consensus_disagreement({"consensus": consensus}))
+
+    def test_needs_review_covers_disagreement_and_low_confidence(self):
+        self.assertTrue(needs_review(evaluation(confidence=0.2)))
+        self.assertTrue(needs_review({"consensus": {"agreement": False}}))
+        self.assertFalse(needs_review(evaluation(confidence=0.95)))
 
 
 if __name__ == "__main__":

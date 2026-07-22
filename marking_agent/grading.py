@@ -13,6 +13,7 @@ Return only JSON matching the requested schema."""
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.6
+CONSENSUS_TOLERANCE = Decimal("0.5")
 
 
 GRADING_RESPONSE_SCHEMA = {
@@ -134,6 +135,32 @@ def is_low_confidence(evaluation):
     return confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD
 
 
+def build_consensus(evaluations, models):
+    proposals = [decimal_from_value(evaluation["proposed_marks_awarded"]) for evaluation in evaluations]
+    spread = max(proposals) - min(proposals)
+    return {
+        "agreement": spread <= CONSENSUS_TOLERANCE,
+        "spread": format_decimal(spread),
+        "models": [
+            {
+                "model": model,
+                "proposed_marks_awarded": evaluation["proposed_marks_awarded"],
+                "confidence": evaluation.get("confidence"),
+            }
+            for model, evaluation in zip(models, evaluations)
+        ],
+    }
+
+
+def consensus_disagreement(evaluation):
+    consensus = evaluation.get("consensus")
+    return bool(consensus) and not consensus.get("agreement", True)
+
+
+def needs_review(evaluation):
+    return is_low_confidence(evaluation) or consensus_disagreement(evaluation)
+
+
 def decimal_from_value(value):
     try:
         return Decimal(str(value))
@@ -184,4 +211,18 @@ def render_evaluation(evaluation):
         status = "Awarded" if item["awarded"] else "Not awarded"
         lines.append(f"- {item['criterion']}: {status} - {item['evidence']}")
 
+    lines.extend(consensus_lines(evaluation))
     return "\n".join(lines)
+
+
+def consensus_lines(evaluation):
+    consensus = evaluation.get("consensus")
+    if not consensus:
+        return []
+    verdict = "AGREEMENT" if consensus["agreement"] else "DISAGREEMENT - REVIEW"
+    lines = ["", f"Multi-model {verdict} (spread {consensus['spread']} marks):"]
+    for model in consensus["models"]:
+        confidence = model.get("confidence")
+        confidence_text = "n/a" if confidence is None else f"{float(confidence):.0%}"
+        lines.append(f"- {model['model']}: {model['proposed_marks_awarded']} marks (confidence {confidence_text})")
+    return lines

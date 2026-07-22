@@ -53,6 +53,9 @@ class OpenAIProvider:
         )
         return response.choices[0].message.content
 
+    def list_models(self):
+        return sorted(model.id for model in self._ensure_client().models.list())
+
 
 class AzureOpenAIProvider(OpenAIProvider):
     def __init__(self, deployment, endpoint, api_version, api_key="", client=None):
@@ -71,6 +74,9 @@ class AzureOpenAIProvider(OpenAIProvider):
         if self.api_key:
             arguments["api_key"] = self.api_key
         return AzureOpenAI(**arguments)
+
+    def list_models(self):
+        return []
 
 
 class AnthropicProvider:
@@ -98,6 +104,9 @@ class AnthropicProvider:
         )
         return next(block.text for block in response.content if block.type == "text")
 
+    def list_models(self):
+        return sorted(model.id for model in self._ensure_client().models.list())
+
     @staticmethod
     def _build_content(user_text, image_data_urls):
         content = [{"type": "text", "text": user_text}]
@@ -118,16 +127,27 @@ class GeminiProvider:
         self.api_key = api_key
         self._model = client
 
+    def _ensure_genai(self):
+        try:
+            import google.generativeai as genai
+        except ImportError as error:
+            raise missing_package_error() from error
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
+        return genai
+
     def _ensure_model(self):
         if self._model is None:
-            try:
-                import google.generativeai as genai
-            except ImportError as error:
-                raise missing_package_error() from error
-            if self.api_key:
-                genai.configure(api_key=self.api_key)
-            self._model = genai.GenerativeModel(self.model)
+            self._model = self._ensure_genai().GenerativeModel(self.model)
         return self._model
+
+    def list_models(self):
+        genai = self._ensure_genai()
+        return sorted(
+            model.name.removeprefix("models/")
+            for model in genai.list_models()
+            if "generateContent" in getattr(model, "supported_generation_methods", [])
+        )
 
     def complete_json(self, system_prompt, user_text, schema, image_data_urls=None):
         schema_instruction = (

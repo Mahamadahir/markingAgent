@@ -37,6 +37,16 @@ class ReviewSortTests(unittest.TestCase):
 
         self.assertEqual(ordered, ["C", "B", "D", "A"])
 
+    def test_flagged_items_sort_before_unflagged(self):
+        items = [
+            {"student_id": "A", "status": "AI_GENERATED", "confidence": 0.9, "flagged": False},
+            {"student_id": "B", "status": "AI_GENERATED", "confidence": 0.95, "flagged": True},
+        ]
+
+        ordered = [item["student_id"] for item in sorted(items, key=review_sort_key)]
+
+        self.assertEqual(ordered, ["B", "A"])
+
 
 class AppServiceTests(unittest.TestCase):
     def build_service(self, directory):
@@ -69,6 +79,30 @@ class AppServiceTests(unittest.TestCase):
             service = self.build_service(Path(raw))
 
             self.assertIsNone(service.stored_provider())
+
+    def test_grade_item_with_models_records_consensus(self):
+        from marking_agent.config import provider_settings
+
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            mark_scheme_path = directory / "scheme.txt"
+            mark_scheme_path.write_text("guidance", encoding="utf-8")
+            service = self.build_service(directory)
+            item = {"student_id": "STUDENT_001", "question_id": FULL_SCRIPT_QUESTION_ID, "answer": "text"}
+            providers = [
+                FakeProvider(full_script_evaluation("STUDENT_001", marks=2)),
+                FakeProvider(full_script_evaluation("STUDENT_001", marks=0)),
+            ]
+
+            with mock.patch.object(app_service, "build_provider", side_effect=providers):
+                evaluation = service.grade_item_with_models(
+                    [provider_settings("model-a", provider="openai"), provider_settings("model-b", provider="openai")],
+                    mark_scheme_path,
+                    item,
+                )
+
+            self.assertFalse(evaluation["consensus"]["agreement"])
+            self.assertEqual([m["model"] for m in evaluation["consensus"]["models"]], ["model-a", "model-b"])
 
     def test_set_exam_switches_active_exam(self):
         with tempfile.TemporaryDirectory() as raw:

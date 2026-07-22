@@ -74,6 +74,13 @@ def parse_args():
     list_parser = subparsers.add_parser("list-exams", help="List exams in the SQLite state database.")
     list_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
 
+    models_parser = subparsers.add_parser("list-models", help="List models available for a provider API key.")
+    models_parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
+    models_parser.add_argument("--api-key", default=None)
+    models_parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
+    models_parser.add_argument("--azure-endpoint", default=None)
+    models_parser.add_argument("--azure-api-version", default=None)
+
     add_grading_arguments(parser)
     return parser.parse_args()
 
@@ -270,6 +277,24 @@ def list_exams_command(args):
         connection.close()
 
 
+def list_models_command(args):
+    provider = build_provider(
+        provider_settings(
+            args.model,
+            args.provider,
+            api_key=args.api_key,
+            azure_endpoint=args.azure_endpoint,
+            azure_api_version=args.azure_api_version,
+        )
+    )
+    models = provider.list_models()
+    if not models:
+        print("No models listed for this provider and key.")
+        return
+    for model in models:
+        print(model)
+
+
 def main():
     args = parse_args()
     command = args.command or "grade"
@@ -281,6 +306,8 @@ def main():
             export_csv_command(args)
         elif command == "list-exams":
             list_exams_command(args)
+        elif command == "list-models":
+            list_models_command(args)
         else:
             grade_all(args)
     except (FileNotFoundError, RuntimeError, ValueError) as error:

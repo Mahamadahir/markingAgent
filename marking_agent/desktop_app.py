@@ -26,6 +26,7 @@ def run():
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import (
             QApplication,
+            QCheckBox,
             QComboBox,
             QFileDialog,
             QFrame,
@@ -133,7 +134,13 @@ def run():
             self.ocr_mode.setCurrentText(DEFAULT_OCR_MODE)
             self.database_path = QLineEdit(str(DEFAULT_DB_PATH))
             self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
-            self.model_name = QLineEdit(DEFAULT_MODEL_ENV)
+
+            self.model_name = QComboBox()
+            self.model_name.setEditable(True)
+            self.model_name.setCurrentText(DEFAULT_MODEL_ENV)
+
+            self.fetch_models_button = QPushButton("Fetch models")
+            self.fetch_models_button.clicked.connect(self.fetch_models)
 
             self.provider_select = QComboBox()
             self.provider_select.addItems(PROVIDER_CHOICES)
@@ -143,6 +150,12 @@ def run():
             self.api_key_input = QLineEdit()
             self.api_key_input.setEchoMode(QLineEdit.Password)
             self.api_key_input.setPlaceholderText("Leave blank to use environment variable")
+
+            self.consensus_toggle = QCheckBox("Multi-model consensus (grade with the models selected below)")
+            self.consensus_toggle.toggled.connect(self.on_consensus_toggled)
+            self.consensus_models = QListWidget()
+            self.consensus_models.setSelectionMode(QListWidget.ExtendedSelection)
+            self.consensus_models.setMaximumHeight(110)
 
             self.azure_endpoint = QLineEdit(DEFAULT_AZURE_ENDPOINT)
             self.azure_endpoint.setPlaceholderText("https://my-resource.openai.azure.com")
@@ -175,16 +188,20 @@ def run():
             provider_layout.addWidget(self.provider_select, 1, 0)
             provider_layout.addWidget(QLabel("Model / deployment"), 0, 1)
             provider_layout.addWidget(self.model_name, 1, 1)
-            provider_layout.addWidget(QLabel("API key"), 2, 0, 1, 2)
-            provider_layout.addWidget(self.api_key_input, 3, 0, 1, 2)
+            provider_layout.addWidget(self.fetch_models_button, 1, 2)
+            provider_layout.addWidget(QLabel("API key"), 2, 0, 1, 3)
+            provider_layout.addWidget(self.api_key_input, 3, 0, 1, 3)
             self.azure_endpoint_label = QLabel("Azure endpoint")
             self.azure_api_version_label = QLabel("Azure API version")
             provider_layout.addWidget(self.azure_endpoint_label, 4, 0)
             provider_layout.addWidget(self.azure_endpoint, 5, 0)
             provider_layout.addWidget(self.azure_api_version_label, 4, 1)
             provider_layout.addWidget(self.azure_api_version, 5, 1)
+            provider_layout.addWidget(self.consensus_toggle, 6, 0, 1, 3)
+            provider_layout.addWidget(self.consensus_models, 7, 0, 1, 3)
             layout.addWidget(self.card(provider_card))
             self.on_provider_changed(DEFAULT_PROVIDER)
+            self.on_consensus_toggled(False)
 
             paths_card = QFrame()
             paths_layout = QGridLayout(paths_card)
@@ -394,18 +411,39 @@ def run():
             self.azure_api_version.setVisible(is_azure)
             self.azure_endpoint_label.setVisible(is_azure)
             self.azure_api_version_label.setVisible(is_azure)
-            if not self.model_name.text().strip():
-                self.model_name.setText(default_model_for_provider(provider))
+            if not self.model_name.currentText().strip():
+                self.model_name.setCurrentText(default_model_for_provider(provider))
+
+        def on_consensus_toggled(self, checked):
+            self.consensus_models.setVisible(checked)
+
+        def fetch_models(self):
+            try:
+                models = self.service.list_models(self.current_provider_settings())
+            except Exception as error:
+                self.show_error(error)
+                return
+            if not models:
+                QMessageBox.information(
+                    self,
+                    "No models listed",
+                    "This provider does not list models for the given key "
+                    "(Azure exposes deployments, not base models). Enter the model or deployment name manually.",
+                )
+                return
+            current = self.model_name.currentText()
+            self.model_name.clear()
+            self.model_name.addItems(models)
+            if current:
+                self.model_name.setCurrentText(current)
+            self.consensus_models.clear()
+            self.consensus_models.addItems(models)
 
         def item_label(self, item):
             confidence = item.get("confidence")
-            if confidence is None:
-                suffix = ""
-            elif confidence < LOW_CONFIDENCE_THRESHOLD:
-                suffix = f" | {confidence:.0%} LOW - REVIEW"
-            else:
-                suffix = f" | {confidence:.0%}"
-            return f"{item['student_id']} | {item['question_id']} | {item['status']}{suffix}"
+            confidence_text = "" if confidence is None else f" | {confidence:.0%}"
+            flag = " REVIEW" if item.get("flagged") else ""
+            return f"{item['student_id']} | {item['question_id']} | {item['status']}{confidence_text}{flag}"
 
         def apply_stored_provider(self):
             stored = self.service.stored_provider()
@@ -413,26 +451,37 @@ def run():
                 return
             self.provider_select.setCurrentText(stored["provider"])
             if stored.get("model"):
-                self.model_name.setText(stored["model"])
+                self.model_name.setCurrentText(stored["model"])
 
-        def current_provider_settings(self):
+        def current_provider_settings(self, model=None):
             return provider_settings(
-                self.model_name.text().strip() or default_model_for_provider(self.provider_select.currentText()),
+                model or self.model_name.currentText().strip() or default_model_for_provider(self.provider_select.currentText()),
                 provider=self.provider_select.currentText(),
                 api_key=self.api_key_input.text().strip(),
                 azure_endpoint=self.azure_endpoint.text().strip(),
                 azure_api_version=self.azure_api_version.text().strip() or DEFAULT_AZURE_API_VERSION,
             )
 
+        def consensus_settings(self):
+            models = [item.text() for item in self.consensus_models.selectedItems()]
+            return [self.current_provider_settings(model=model) for model in models]
+
         def run_ai_evaluation(self):
             if not self.current_item:
                 return
             try:
-                self.current_evaluation = self.service.grade_item(
-                    self.current_provider_settings(),
-                    self.mark_scheme_text.text(),
-                    self.current_item,
-                )
+                if self.consensus_toggle.isChecked():
+                    settings_list = self.consensus_settings()
+                    if len(settings_list) < 2:
+                        QMessageBox.warning(self, "Select models", "Choose at least two models for consensus grading.")
+                        return
+                    self.current_evaluation = self.service.grade_item_with_models(
+                        settings_list, self.mark_scheme_text.text(), self.current_item
+                    )
+                else:
+                    self.current_evaluation = self.service.grade_item(
+                        self.current_provider_settings(), self.mark_scheme_text.text(), self.current_item
+                    )
                 self.render_current_evaluation()
                 self.refresh_results()
             except Exception as error:

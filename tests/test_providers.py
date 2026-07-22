@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from marking_agent.config import provider_settings
 from marking_agent.providers import (
@@ -9,6 +10,23 @@ from marking_agent.providers import (
     build_provider,
     split_data_url,
 )
+
+
+class FakeModelsClient:
+    def __init__(self, ids):
+        self.models = SimpleNamespace(list=lambda: [SimpleNamespace(id=model_id) for model_id in ids])
+
+
+class ListModelsTests(unittest.TestCase):
+    def test_openai_lists_sorted_model_ids(self):
+        provider = OpenAIProvider("gpt-4o", client=FakeModelsClient(["gpt-4o-mini", "gpt-4o"]))
+
+        self.assertEqual(provider.list_models(), ["gpt-4o", "gpt-4o-mini"])
+
+    def test_azure_reports_no_listable_models(self):
+        provider = AzureOpenAIProvider("dep", "https://x.openai.azure.com", "2024-08-01-preview", client=object())
+
+        self.assertEqual(provider.list_models(), [])
 
 
 class ProviderTests(unittest.TestCase):

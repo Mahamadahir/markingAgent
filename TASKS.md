@@ -10,6 +10,8 @@
 - Persist provider and model per exam (not the API key). Saved on the exam record and restored into the desktop dropdown when a project loads.
 - OCR for scanned mark schemes. Extraction has a per-run mode (never / auto / always) using Tesseract; auto runs OCR only on pages with no embedded text.
 - Confidence flagging: each grade carries a model confidence; low-confidence provisional items sort to the top of the desktop review queue and are flagged, and confidence is included in the CSV export.
+- Model listing per provider: query the provider API with the entered key to populate the model dropdown (CLI `list-models`, desktop Fetch models button); Azure lists deployments so is entered manually.
+- Multi-model consensus: grade an item against several models (works with one key via different models from the same provider) and flag disagreements, which sort to the top of the review queue alongside low-confidence items.
 
 ## Next
 1. Verify Claude and Gemini against live APIs. Both paths are correct by construction but unproven; Gemini relies on prompt-injected schema rather than native enforcement, so it is the most likely to return malformed JSON. This now also covers the page classification pass.
@@ -18,7 +20,6 @@
 ## Backlog
 
 ### Trust and grading quality
-- Multi-model consensus: grade each item with two providers and flag disagreements for human review.
 - Rubric calibration pass: grade teacher-marked sample scripts first, show divergence, tune the scheme before the full run.
 - Re-grade a single item from the desktop (different model or edited scheme) instead of `--no-resume` for the whole run.
 

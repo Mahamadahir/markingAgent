@@ -158,7 +158,7 @@ The model output is provisional. The CLI requires a human to approve or override
 
 Each evaluation includes a confidence between 0 and 1 for how certain the model is of the proposed marks. Low confidence signals illegible handwriting, an ambiguous answer, or a mark scheme that does not clearly cover the response. Confidence appears in the provisional evaluation output and in the CSV export, and low-confidence items are flagged.
 
-In the desktop app, the Grading Workspace queue sorts provisional low-confidence items to the top so the least certain grades are reviewed first, and each row shows its confidence with a `LOW - REVIEW` marker below the threshold.
+In the desktop app, the Grading Workspace queue sorts flagged provisional items (low confidence or multi-model disagreement) to the top so the least certain grades are reviewed first, and each row shows its confidence with a `REVIEW` marker when flagged.
 
 ### Question-Level Grading
 
@@ -181,6 +181,28 @@ python main.py grade --provider gemini --model gemini-1.5-pro --api-key ...
 ```
 
 Each provider reads its own environment variable when `--api-key` is omitted: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and `AZURE_OPENAI_API_KEY`.
+
+### Listing available models
+
+List the models a provider exposes for a given key, so you select ones the key can actually use:
+
+```bash
+python main.py list-models --provider openai --api-key sk-...
+python main.py list-models --provider anthropic
+python main.py list-models --provider gemini --api-key ...
+```
+
+Azure is the exception: a data-plane key exposes deployments, not base models, so listing returns nothing and you enter the deployment name yourself.
+
+In the desktop app, the Fetch models button on Project Setup queries the provider with the entered key and populates the model dropdown (and the consensus model list). The model field is editable, so you can still type a model the listing does not return.
+
+### Multi-model consensus
+
+Grading can run the same item against several models and flag where they disagree. Disagreement is a strong signal that an answer is hard or ambiguous and deserves a closer human look. This works with one API key by selecting different models from the same provider.
+
+Enable it with the Multi-model consensus checkbox on Project Setup, then select two or more models from the list. Each selected model grades the item; the first model's evaluation is stored, annotated with every model's proposed marks and confidence and an agreement flag. Marks within half a mark count as agreement.
+
+Disagreements are treated like low confidence: the item is flagged and sorted to the top of the review queue, and the multi-model breakdown appears in the evaluation output.
 
 For Azure OpenAI, `--model` is the deployment name:
 

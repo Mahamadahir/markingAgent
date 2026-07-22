@@ -2,11 +2,13 @@ from pathlib import Path
 
 from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH
 from .grading import (
+    build_consensus,
     confidence_value,
     decimal_from_value,
     format_decimal,
     grade_pdf_images,
     grade_text_response,
+    needs_review,
     validate_score_range,
 )
 from .page_mapping import ScriptPages
@@ -77,7 +79,7 @@ class AppService:
             question_id = submission["question_id"]
             record = get_record(self.connection, self.exam_id, student_id, question_id)
             status = record["status"] if record else "PENDING"
-            confidence = confidence_value(evaluation_from_record(record)) if record else None
+            evaluation = evaluation_from_record(record) if record else None
             items.append(
                 {
                     "exam_id": self.exam_id,
@@ -85,7 +87,8 @@ class AppService:
                     "question_id": question_id,
                     "pdf_path": submission["pdf_path"],
                     "status": status,
-                    "confidence": confidence,
+                    "confidence": confidence_value(evaluation) if evaluation else None,
+                    "flagged": bool(evaluation) and needs_review(evaluation),
                 }
             )
         items.sort(key=review_sort_key)
@@ -122,7 +125,13 @@ class AppService:
             self._resolver_key = key
         return self._resolver
 
+    def list_models(self, settings):
+        return build_provider(settings).list_models()
+
     def grade_item(self, settings, mark_scheme_path, item, force=False):
+        return self.grade_item_with_models([settings], mark_scheme_path, item, force=force)
+
+    def grade_item_with_models(self, settings_list, mark_scheme_path, item, force=False):
         student_id = item["student_id"]
         question_id = item["question_id"]
         record = get_record(self.connection, self.exam_id, student_id, question_id)
@@ -135,26 +144,27 @@ class AppService:
         else:
             snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
 
-        provider = self.provider_for(settings)
+        primary = settings_list[0]
+        self._remember_provider(primary)
 
         if "pdf_path" in item:
-            resolver = self.resolver_for(settings, list_question_ids(mark_scheme))
+            resolver = self.resolver_for(primary, list_question_ids(mark_scheme))
             image_urls = resolver.pages_for(item["pdf_path"], question_id)
-            evaluation = grade_pdf_images(
-                provider,
-                student_id,
-                question_id,
-                image_urls,
-                snippet,
-            )
+            evaluations = [
+                grade_pdf_images(build_provider(settings), student_id, question_id, image_urls, snippet)
+                for settings in settings_list
+            ]
         else:
-            evaluation = grade_text_response(
-                provider,
-                student_id,
-                question_id,
-                item["answer"],
-                snippet,
-            )
+            evaluations = [
+                grade_text_response(build_provider(settings), student_id, question_id, item["answer"], snippet)
+                for settings in settings_list
+            ]
+
+        evaluation = evaluations[0]
+        if len(settings_list) > 1:
+            evaluation = dict(evaluation)
+            evaluation["consensus"] = build_consensus(evaluations, [settings.model for settings in settings_list])
+
         save_provisional_evaluation(self.connection, self.exam_id, student_id, question_id, evaluation, force=force)
         return evaluation
 
@@ -189,7 +199,7 @@ class AppService:
 def review_sort_key(item):
     is_final = item["status"] in {APPROVED, OVERRIDDEN}
     confidence = item.get("confidence")
-    return (is_final, confidence if confidence is not None else 2.0)
+    return (is_final, not item.get("flagged", False), confidence if confidence is not None else 2.0)
 
 
 def normalise_action(action):
