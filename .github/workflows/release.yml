@@ -4,6 +4,14 @@ on:
   push:
     branches: [master]
     tags: ["v*"]
+    paths:
+      - "marking_agent/**"
+      - "data/**"
+      - "desktop.py"
+      - "main.py"
+      - "requirements.txt"
+      - "GradeAudit.spec"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 jobs:
