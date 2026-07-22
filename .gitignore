@@ -4,6 +4,9 @@ grading_output.csv
 markingAgent/
 data/input/*
 !data/input/.gitkeep
+!data/input/submissions/
+data/input/submissions/*
+!data/input/submissions/.gitkeep
 data/extracted/*
 !data/extracted/.gitkeep
 data/output/*
@@ -14,3 +17,4 @@ data/output/*
 build/
 dist/
 *.spec
+graphify-out/
