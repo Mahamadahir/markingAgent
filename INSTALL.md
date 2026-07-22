@@ -52,14 +52,16 @@ Download `GradeAudit-macos-arm64.tar.gz`, then:
 
 ```bash
 tar -xzf GradeAudit-macos-arm64.tar.gz
-xattr -dr com.apple.quarantine GradeAudit
-./GradeAudit/GradeAudit
+xattr -dr com.apple.quarantine GradeAudit.app
 ```
 
+Move `GradeAudit.app` to your Applications folder and open it as normal.
+
 The `xattr` line clears the quarantine flag macOS puts on downloaded files.
-Without it, Gatekeeper blocks the app because it is not signed. If you skip that
-step and double-click instead, macOS shows "GradeAudit cannot be opened because
-the developer cannot be verified"; clearing quarantine is the reliable fix.
+Without it, Gatekeeper blocks the app because it is not signed, showing
+"GradeAudit cannot be opened because the developer cannot be verified". Clearing
+quarantine is the reliable fix; alternatively, right-click the app and choose
+Open the first time to approve it.
 
 ## Windows
 
