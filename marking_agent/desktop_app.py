@@ -2,7 +2,19 @@ import sys
 from pathlib import Path
 
 from .app_service import AppService, normalise_action
-from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH, DEFAULT_SUBMISSIONS_PATH
+from .config import (
+    DEFAULT_AZURE_API_VERSION,
+    DEFAULT_AZURE_ENDPOINT,
+    DEFAULT_DB_PATH,
+    DEFAULT_EXAM_NAME,
+    DEFAULT_MODEL_ENV,
+    DEFAULT_OUTPUT_PATH,
+    DEFAULT_PROVIDER,
+    DEFAULT_SUBMISSIONS_PATH,
+    PROVIDER_CHOICES,
+    default_model_for_provider,
+    provider_settings,
+)
 from .grading import render_evaluation
 from .state import APPROVED, OVERRIDDEN
 
@@ -12,6 +24,7 @@ def run():
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import (
             QApplication,
+            QComboBox,
             QFileDialog,
             QFrame,
             QGridLayout,
@@ -117,6 +130,19 @@ def run():
             self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
             self.model_name = QLineEdit(DEFAULT_MODEL_ENV)
 
+            self.provider_select = QComboBox()
+            self.provider_select.addItems(PROVIDER_CHOICES)
+            self.provider_select.setCurrentText(DEFAULT_PROVIDER)
+            self.provider_select.currentTextChanged.connect(self.on_provider_changed)
+
+            self.api_key_input = QLineEdit()
+            self.api_key_input.setEchoMode(QLineEdit.Password)
+            self.api_key_input.setPlaceholderText("Leave blank to use environment variable")
+
+            self.azure_endpoint = QLineEdit(DEFAULT_AZURE_ENDPOINT)
+            self.azure_endpoint.setPlaceholderText("https://my-resource.openai.azure.com")
+            self.azure_api_version = QLineEdit(DEFAULT_AZURE_API_VERSION)
+
             exam_card = QFrame()
             exam_layout = QGridLayout(exam_card)
             exam_layout.addWidget(QLabel("Exam name"), 0, 0)
@@ -129,14 +155,29 @@ def run():
             for widget in [self.mark_scheme_pdf, self.question_paper_pdf, self.submissions_path, self.mark_scheme_text]:
                 layout.addWidget(self.card(widget))
 
+            provider_card = QFrame()
+            provider_layout = QGridLayout(provider_card)
+            provider_layout.addWidget(QLabel("LLM provider"), 0, 0)
+            provider_layout.addWidget(self.provider_select, 1, 0)
+            provider_layout.addWidget(QLabel("Model / deployment"), 0, 1)
+            provider_layout.addWidget(self.model_name, 1, 1)
+            provider_layout.addWidget(QLabel("API key"), 2, 0, 1, 2)
+            provider_layout.addWidget(self.api_key_input, 3, 0, 1, 2)
+            self.azure_endpoint_label = QLabel("Azure endpoint")
+            self.azure_api_version_label = QLabel("Azure API version")
+            provider_layout.addWidget(self.azure_endpoint_label, 4, 0)
+            provider_layout.addWidget(self.azure_endpoint, 5, 0)
+            provider_layout.addWidget(self.azure_api_version_label, 4, 1)
+            provider_layout.addWidget(self.azure_api_version, 5, 1)
+            layout.addWidget(self.card(provider_card))
+            self.on_provider_changed(DEFAULT_PROVIDER)
+
             paths_card = QFrame()
             paths_layout = QGridLayout(paths_card)
             paths_layout.addWidget(QLabel("SQLite state"), 0, 0)
             paths_layout.addWidget(self.database_path, 1, 0)
             paths_layout.addWidget(QLabel("CSV export"), 2, 0)
             paths_layout.addWidget(self.output_path, 3, 0)
-            paths_layout.addWidget(QLabel("Model"), 4, 0)
-            paths_layout.addWidget(self.model_name, 5, 0)
             layout.addWidget(self.card(paths_card))
 
             actions = QHBoxLayout()
@@ -329,12 +370,30 @@ def run():
             if self.current_evaluation:
                 self.render_current_evaluation()
 
+        def on_provider_changed(self, provider):
+            is_azure = provider == "azure"
+            self.azure_endpoint.setVisible(is_azure)
+            self.azure_api_version.setVisible(is_azure)
+            self.azure_endpoint_label.setVisible(is_azure)
+            self.azure_api_version_label.setVisible(is_azure)
+            if not self.model_name.text().strip():
+                self.model_name.setText(default_model_for_provider(provider))
+
+        def current_provider_settings(self):
+            return provider_settings(
+                self.model_name.text().strip() or default_model_for_provider(self.provider_select.currentText()),
+                provider=self.provider_select.currentText(),
+                api_key=self.api_key_input.text().strip(),
+                azure_endpoint=self.azure_endpoint.text().strip(),
+                azure_api_version=self.azure_api_version.text().strip() or DEFAULT_AZURE_API_VERSION,
+            )
+
         def run_ai_evaluation(self):
             if not self.current_item:
                 return
             try:
                 self.current_evaluation = self.service.grade_item(
-                    self.model_name.text(),
+                    self.current_provider_settings(),
                     self.mark_scheme_text.text(),
                     self.current_item,
                 )

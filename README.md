@@ -134,15 +134,19 @@ The model output is provisional. The CLI requires a human to approve or override
 
 ### Grading Providers
 
-The grading call is behind a provider interface, so the same pipeline runs against either the public OpenAI API or Azure OpenAI in a corporate tenant. Both share the request format; only the client construction differs.
+The grading call is behind a provider interface, so the same pipeline runs against OpenAI, Azure OpenAI, Anthropic (Claude), or Google (Gemini). Each provider translates the shared mark scheme text and page images into that backend's request format and returns the evaluation JSON. Adding a provider means implementing one `complete_json` method in `marking_agent/providers.py`.
 
-Default provider is OpenAI, reading `OPENAI_API_KEY`:
+Select a provider with `--provider` and pass the key with `--api-key`, or leave the key blank to use the provider's environment variable.
 
 ```bash
 python main.py grade --provider openai --model gpt-4o
+python main.py grade --provider anthropic --model claude-opus-4-8 --api-key sk-ant-...
+python main.py grade --provider gemini --model gemini-1.5-pro --api-key ...
 ```
 
-For Azure OpenAI, `--model` is the deployment name, and the client reads `AZURE_OPENAI_API_KEY`:
+Each provider reads its own environment variable when `--api-key` is omitted: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and `AZURE_OPENAI_API_KEY`.
+
+For Azure OpenAI, `--model` is the deployment name:
 
 ```bash
 export AZURE_OPENAI_API_KEY='your-key-here'
@@ -153,7 +157,9 @@ python main.py grade \
   --azure-api-version 2024-08-01-preview
 ```
 
-The provider, endpoint, and API version also read from `GRADING_PROVIDER`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_API_VERSION`. Adding a provider means implementing one `complete_json` method in `marking_agent/providers.py`.
+The provider, endpoint, and API version also read from `GRADING_PROVIDER`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_API_VERSION`.
+
+In the desktop app, Project Setup has an LLM provider dropdown, a model/deployment field, an API key field, and the Azure endpoint fields (shown only when Azure is selected). The chosen provider and key are used for every AI evaluation in that session.
 
 ## Desktop App
 

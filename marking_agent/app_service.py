@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH, provider_settings
+from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH
 from .grading import (
     decimal_from_value,
     format_decimal,
@@ -36,6 +36,7 @@ class AppService:
         initialise_database(self.connection)
         self.exam_id = ensure_exam(self.connection, exam_id=exam_id, name=exam_name)
         self._provider = None
+        self._provider_settings = None
 
     def close(self):
         self.connection.close()
@@ -77,7 +78,13 @@ class AppService:
             return None
         return evaluation_from_record(record)
 
-    def grade_item(self, model, mark_scheme_path, item, force=False):
+    def provider_for(self, settings):
+        if self._provider is None or settings != self._provider_settings:
+            self._provider = build_provider(settings)
+            self._provider_settings = settings
+        return self._provider
+
+    def grade_item(self, settings, mark_scheme_path, item, force=False):
         student_id = item["student_id"]
         question_id = item["question_id"]
         record = get_record(self.connection, self.exam_id, student_id, question_id)
@@ -90,12 +97,11 @@ class AppService:
         else:
             snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
 
-        if self._provider is None:
-            self._provider = build_provider(provider_settings(model))
+        provider = self.provider_for(settings)
 
         if "pdf_path" in item:
             evaluation = grade_pdf_response(
-                self._provider,
+                provider,
                 student_id,
                 question_id,
                 item["pdf_path"],
@@ -103,7 +109,7 @@ class AppService:
             )
         else:
             evaluation = grade_text_response(
-                self._provider,
+                provider,
                 student_id,
                 question_id,
                 item["answer"],

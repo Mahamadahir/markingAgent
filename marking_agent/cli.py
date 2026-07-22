@@ -10,6 +10,7 @@ from .config import (
     DEFAULT_OUTPUT_PATH,
     DEFAULT_PROVIDER,
     DEFAULT_SUBMISSIONS_PATH,
+    PROVIDER_CHOICES,
     provider_settings,
 )
 from .grading import (
@@ -72,7 +73,8 @@ def add_grading_arguments(parser):
     parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
     parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
-    parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=["openai", "azure"])
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
+    parser.add_argument("--api-key", default=None)
     parser.add_argument("--azure-endpoint", default=None)
     parser.add_argument("--azure-api-version", default=None)
     parser.add_argument(
@@ -173,7 +175,13 @@ def grade_all(args):
         students_path=str(submissions_path),
     )
     provider = build_provider(
-        provider_settings(args.model, args.provider, args.azure_endpoint, args.azure_api_version)
+        provider_settings(
+            args.model,
+            args.provider,
+            api_key=args.api_key,
+            azure_endpoint=args.azure_endpoint,
+            azure_api_version=args.azure_api_version,
+        )
     )
 
     try:

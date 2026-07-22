@@ -1,4 +1,16 @@
+import base64
+import json
+
 from .grading import GRADING_RESPONSE_SCHEMA
+
+
+GRADING_JSON_SCHEMA = GRADING_RESPONSE_SCHEMA["schema"]
+
+
+def split_data_url(data_url):
+    header, encoded = data_url.split(",", 1)
+    media_type = header[len("data:"):].split(";", 1)[0] or "image/png"
+    return media_type, encoded
 
 
 def build_openai_content(user_text, image_data_urls=None):
@@ -10,9 +22,16 @@ def build_openai_content(user_text, image_data_urls=None):
     return content
 
 
+def missing_package_error():
+    return RuntimeError(
+        "A required package is not installed. Run: pip install -r requirements.txt"
+    )
+
+
 class OpenAIProvider:
-    def __init__(self, model, client=None):
+    def __init__(self, model, api_key="", client=None):
         self.model = model
+        self.api_key = api_key
         self._client = client
 
     def _ensure_client(self):
@@ -24,10 +43,8 @@ class OpenAIProvider:
         try:
             from openai import OpenAI
         except ImportError as error:
-            raise RuntimeError(
-                "The openai package is not installed. Run: pip install -r requirements.txt"
-            ) from error
-        return OpenAI()
+            raise missing_package_error() from error
+        return OpenAI(api_key=self.api_key) if self.api_key else OpenAI()
 
     def complete_json(self, system_prompt, user_text, image_data_urls=None):
         response = self._ensure_client().chat.completions.create(
@@ -43,8 +60,8 @@ class OpenAIProvider:
 
 
 class AzureOpenAIProvider(OpenAIProvider):
-    def __init__(self, deployment, endpoint, api_version, client=None):
-        super().__init__(model=deployment, client=client)
+    def __init__(self, deployment, endpoint, api_version, api_key="", client=None):
+        super().__init__(model=deployment, api_key=api_key, client=client)
         self._endpoint = endpoint
         self._api_version = api_version
 
@@ -52,17 +69,97 @@ class AzureOpenAIProvider(OpenAIProvider):
         try:
             from openai import AzureOpenAI
         except ImportError as error:
-            raise RuntimeError(
-                "The openai package is not installed. Run: pip install -r requirements.txt"
-            ) from error
+            raise missing_package_error() from error
         if not self._endpoint:
             raise RuntimeError("Azure provider requires AZURE_OPENAI_ENDPOINT to be set.")
-        return AzureOpenAI(azure_endpoint=self._endpoint, api_version=self._api_version)
+        arguments = {"azure_endpoint": self._endpoint, "api_version": self._api_version}
+        if self.api_key:
+            arguments["api_key"] = self.api_key
+        return AzureOpenAI(**arguments)
+
+
+class AnthropicProvider:
+    def __init__(self, model, api_key="", client=None):
+        self.model = model
+        self.api_key = api_key
+        self._client = client
+
+    def _ensure_client(self):
+        if self._client is None:
+            try:
+                from anthropic import Anthropic
+            except ImportError as error:
+                raise missing_package_error() from error
+            self._client = Anthropic(api_key=self.api_key) if self.api_key else Anthropic()
+        return self._client
+
+    def complete_json(self, system_prompt, user_text, image_data_urls=None):
+        response = self._ensure_client().messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=system_prompt,
+            output_config={"format": {"type": "json_schema", "schema": GRADING_JSON_SCHEMA}},
+            messages=[{"role": "user", "content": self._build_content(user_text, image_data_urls)}],
+        )
+        return next(block.text for block in response.content if block.type == "text")
+
+    @staticmethod
+    def _build_content(user_text, image_data_urls):
+        content = [{"type": "text", "text": user_text}]
+        for image_url in image_data_urls or []:
+            media_type, encoded = split_data_url(image_url)
+            content.append(
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": encoded},
+                }
+            )
+        return content
+
+
+class GeminiProvider:
+    def __init__(self, model, api_key="", client=None):
+        self.model = model
+        self.api_key = api_key
+        self._model = client
+
+    def _ensure_model(self):
+        if self._model is None:
+            try:
+                import google.generativeai as genai
+            except ImportError as error:
+                raise missing_package_error() from error
+            if self.api_key:
+                genai.configure(api_key=self.api_key)
+            self._model = genai.GenerativeModel(self.model)
+        return self._model
+
+    def complete_json(self, system_prompt, user_text, image_data_urls=None):
+        schema_instruction = (
+            f"{system_prompt}\n\nReturn only JSON matching this schema:\n"
+            f"{json.dumps(GRADING_JSON_SCHEMA)}"
+        )
+        parts = [schema_instruction, user_text]
+        for image_url in image_data_urls or []:
+            media_type, encoded = split_data_url(image_url)
+            parts.append({"mime_type": media_type, "data": base64.b64decode(encoded)})
+
+        response = self._ensure_model().generate_content(
+            parts,
+            generation_config={"response_mime_type": "application/json", "temperature": 0},
+        )
+        return response.text
 
 
 def build_provider(settings):
     if settings.provider == "openai":
-        return OpenAIProvider(settings.model)
+        return OpenAIProvider(settings.model, api_key=settings.api_key)
     if settings.provider == "azure":
-        return AzureOpenAIProvider(settings.model, settings.azure_endpoint, settings.azure_api_version)
+        return AzureOpenAIProvider(
+            settings.model, settings.azure_endpoint, settings.azure_api_version, api_key=settings.api_key
+        )
+    if settings.provider == "anthropic":
+        return AnthropicProvider(settings.model, api_key=settings.api_key)
+    if settings.provider == "gemini":
+        return GeminiProvider(settings.model, api_key=settings.api_key)
     raise ValueError(f"Unknown grading provider: {settings.provider}")

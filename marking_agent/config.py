@@ -16,19 +16,34 @@ DEFAULT_PROVIDER = os.environ.get("GRADING_PROVIDER", "openai")
 DEFAULT_AZURE_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 DEFAULT_AZURE_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
 
+PROVIDER_CHOICES = ["openai", "azure", "anthropic", "gemini"]
+
+DEFAULT_MODELS_BY_PROVIDER = {
+    "openai": DEFAULT_MODEL,
+    "azure": DEFAULT_MODEL,
+    "anthropic": "claude-opus-4-8",
+    "gemini": "gemini-1.5-pro",
+}
+
 
 @dataclass
 class ProviderSettings:
     provider: str
     model: str
+    api_key: str = ""
     azure_endpoint: str = ""
     azure_api_version: str = ""
 
 
-def provider_settings(model, provider=None, azure_endpoint=None, azure_api_version=None):
+def default_model_for_provider(provider):
+    return DEFAULT_MODELS_BY_PROVIDER.get(provider, DEFAULT_MODEL)
+
+
+def provider_settings(model, provider=None, api_key=None, azure_endpoint=None, azure_api_version=None):
     return ProviderSettings(
         provider=provider or DEFAULT_PROVIDER,
         model=model,
+        api_key=api_key or "",
         azure_endpoint=DEFAULT_AZURE_ENDPOINT if azure_endpoint is None else azure_endpoint,
         azure_api_version=DEFAULT_AZURE_API_VERSION if azure_api_version is None else azure_api_version,
     )

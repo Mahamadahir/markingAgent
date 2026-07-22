@@ -107,12 +107,30 @@ class ProviderTests(unittest.TestCase):
         self.assertIsInstance(provider, AzureOpenAIProvider)
         self.assertEqual(provider.model, "grading-deployment")
 
+    def test_builds_anthropic_and_gemini_providers(self):
+        from marking_agent.config import provider_settings
+        from marking_agent.providers import AnthropicProvider, GeminiProvider, build_provider
+
+        anthropic = build_provider(provider_settings("claude-opus-4-8", provider="anthropic"))
+        gemini = build_provider(provider_settings("gemini-1.5-pro", provider="gemini"))
+
+        self.assertIsInstance(anthropic, AnthropicProvider)
+        self.assertIsInstance(gemini, GeminiProvider)
+
     def test_rejects_unknown_provider(self):
         from marking_agent.config import provider_settings
         from marking_agent.providers import build_provider
 
         with self.assertRaises(ValueError):
-            build_provider(provider_settings("gpt-4o", provider="gemini"))
+            build_provider(provider_settings("gpt-4o", provider="mistral"))
+
+    def test_splits_data_url_into_media_type_and_payload(self):
+        from marking_agent.providers import split_data_url
+
+        media_type, encoded = split_data_url("data:image/png;base64,QUJD")
+
+        self.assertEqual(media_type, "image/png")
+        self.assertEqual(encoded, "QUJD")
 
 
 class ValidationTests(unittest.TestCase):
