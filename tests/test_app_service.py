@@ -40,6 +40,22 @@ class AppServiceTests(unittest.TestCase):
 
             self.assertTrue(any(exam["exam_id"] == service.exam_id for exam in service.exams()))
 
+    def test_provider_for_remembers_choice_on_the_exam(self):
+        from marking_agent.config import provider_settings
+
+        with tempfile.TemporaryDirectory() as raw:
+            service = self.build_service(Path(raw))
+
+            service.provider_for(provider_settings("claude-opus-4-8", provider="anthropic"))
+
+            self.assertEqual(service.stored_provider(), {"provider": "anthropic", "model": "claude-opus-4-8"})
+
+    def test_stored_provider_is_none_before_any_grading(self):
+        with tempfile.TemporaryDirectory() as raw:
+            service = self.build_service(Path(raw))
+
+            self.assertIsNone(service.stored_provider())
+
     def test_set_exam_switches_active_exam(self):
         with tempfile.TemporaryDirectory() as raw:
             service = self.build_service(Path(raw))

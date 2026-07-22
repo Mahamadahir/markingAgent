@@ -20,6 +20,7 @@ def connect_database(path):
 
 def initialise_database(connection):
     create_exams_table(connection)
+    ensure_exam_columns(connection)
     ensure_default_exam(connection)
     ensure_grading_records_table(connection)
     connection.commit()
@@ -37,11 +38,20 @@ def create_exams_table(connection):
             mark_scheme_path TEXT,
             question_paper_path TEXT,
             students_path TEXT,
+            provider TEXT DEFAULT '',
+            model TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+
+
+def ensure_exam_columns(connection):
+    columns = table_columns(connection, "exams")
+    for column in ("provider", "model"):
+        if column not in columns:
+            connection.execute(f"ALTER TABLE exams ADD COLUMN {column} TEXT DEFAULT ''")
 
 
 def ensure_default_exam(connection):
@@ -143,6 +153,8 @@ def create_exam(
     mark_scheme_path="",
     question_paper_path="",
     students_path="",
+    provider="",
+    model="",
     exam_id=None,
 ):
     exam_id = exam_id or uuid.uuid4().hex
@@ -156,8 +168,10 @@ def create_exam(
             exam_date,
             mark_scheme_path,
             question_paper_path,
-            students_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            students_path,
+            provider,
+            model
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(exam_id) DO UPDATE SET
             name = excluded.name,
             subject = excluded.subject,
@@ -166,6 +180,8 @@ def create_exam(
             mark_scheme_path = excluded.mark_scheme_path,
             question_paper_path = excluded.question_paper_path,
             students_path = excluded.students_path,
+            provider = excluded.provider,
+            model = excluded.model,
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -177,10 +193,24 @@ def create_exam(
             mark_scheme_path,
             question_paper_path,
             students_path,
+            provider,
+            model,
         ),
     )
     connection.commit()
     return exam_id
+
+
+def set_exam_provider(connection, exam_id, provider, model):
+    connection.execute(
+        """
+        UPDATE exams
+        SET provider = ?, model = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE exam_id = ?
+        """,
+        (provider, model, exam_id),
+    )
+    connection.commit()
 
 
 def get_exam(connection, exam_id):

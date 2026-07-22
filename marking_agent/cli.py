@@ -42,6 +42,7 @@ from .state import (
     list_exams,
     save_human_decision,
     save_provisional_evaluation,
+    set_exam_provider,
 )
 from .storage import export_records_to_csv, load_mark_scheme
 
@@ -182,6 +183,7 @@ def grade_all(args):
         mark_scheme_path=str(mark_scheme_path),
         students_path=str(submissions_path),
     )
+    set_exam_provider(connection, exam_id, args.provider, args.model)
     provider = build_provider(
         provider_settings(
             args.model,

@@ -169,6 +169,8 @@ The provider, endpoint, and API version also read from `GRADING_PROVIDER`, `AZUR
 
 In the desktop app, Project Setup has an LLM provider dropdown, a model/deployment field, an API key field, and the Azure endpoint fields (shown only when Azure is selected). The chosen provider and key are used for every AI evaluation in that session.
 
+The provider and model are saved on the exam record (the API key is not), so reopening a project restores the backend it was last graded with. The dropdown and model field populate from the stored choice when a project loads.
+
 ## Desktop App
 
 The desktop shell uses PySide6 and follows the `GradeAudit AI Assistant` Stitch project screens:

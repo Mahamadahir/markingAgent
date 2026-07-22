@@ -344,6 +344,7 @@ def run():
                     question_paper_path=self.question_paper_pdf.text(),
                     students_path=self.submissions_path.text(),
                 )
+                self.apply_stored_provider()
                 self.exam_items = self.service.load_exam_items(
                     self.submissions_path.text(),
                     self.mark_scheme_text.text(),
@@ -381,6 +382,14 @@ def run():
             self.azure_api_version_label.setVisible(is_azure)
             if not self.model_name.text().strip():
                 self.model_name.setText(default_model_for_provider(provider))
+
+        def apply_stored_provider(self):
+            stored = self.service.stored_provider()
+            if not stored:
+                return
+            self.provider_select.setCurrentText(stored["provider"])
+            if stored.get("model"):
+                self.model_name.setText(stored["model"])
 
         def current_provider_settings(self):
             return provider_settings(

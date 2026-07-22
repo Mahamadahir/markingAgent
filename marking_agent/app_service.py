@@ -23,12 +23,14 @@ from .state import (
     connect_database,
     ensure_exam,
     evaluation_from_record,
+    get_exam,
     get_record,
     initialise_database,
     iter_records,
     list_exams,
     save_human_decision,
     save_provisional_evaluation,
+    set_exam_provider,
 )
 from .storage import export_records_to_csv, load_mark_scheme
 
@@ -95,7 +97,19 @@ class AppService:
         if self._provider is None or settings != self._provider_settings:
             self._provider = build_provider(settings)
             self._provider_settings = settings
+            self._remember_provider(settings)
         return self._provider
+
+    def _remember_provider(self, settings):
+        provider = getattr(settings, "provider", "")
+        if provider:
+            set_exam_provider(self.connection, self.exam_id, provider, getattr(settings, "model", ""))
+
+    def stored_provider(self):
+        exam = get_exam(self.connection, self.exam_id)
+        if not exam or not exam.get("provider"):
+            return None
+        return {"provider": exam["provider"], "model": exam.get("model", "")}
 
     def resolver_for(self, settings, question_ids):
         key = (settings, tuple(question_ids))
