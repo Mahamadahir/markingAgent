@@ -53,8 +53,9 @@ class CliLogicTests(QuietStdoutMixin, unittest.TestCase):
             submission = {"student_id": "STUDENT_001", "question_id": FULL_SCRIPT_QUESTION_ID, "pdf_path": "a.pdf"}
             args = SimpleNamespace(no_resume=False)
 
-            with mock.patch.object(cli, "grade_pdf_response", return_value=sample_evaluation()) as graded:
-                result = cli.get_or_create_evaluation(connection, "default", args, None, submission, "scheme")
+            resolver = SimpleNamespace(provider=object(), pages_for=lambda pdf_path, question_id: ["page"])
+            with mock.patch.object(cli, "grade_pdf_images", return_value=sample_evaluation()) as graded:
+                result = cli.get_or_create_evaluation(connection, "default", args, resolver, submission, "scheme")
 
             graded.assert_called_once()
             self.assertEqual(result["proposed_marks_awarded"], 2)

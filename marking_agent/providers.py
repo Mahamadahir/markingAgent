@@ -1,11 +1,6 @@
 import base64
 import json
 
-from .grading import GRADING_RESPONSE_SCHEMA
-
-
-GRADING_JSON_SCHEMA = GRADING_RESPONSE_SCHEMA["schema"]
-
 
 def split_data_url(data_url):
     header, encoded = data_url.split(",", 1)
@@ -46,14 +41,14 @@ class OpenAIProvider:
             raise missing_package_error() from error
         return OpenAI(api_key=self.api_key) if self.api_key else OpenAI()
 
-    def complete_json(self, system_prompt, user_text, image_data_urls=None):
+    def complete_json(self, system_prompt, user_text, schema, image_data_urls=None):
         response = self._ensure_client().chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": build_openai_content(user_text, image_data_urls)},
             ],
-            response_format={"type": "json_schema", "json_schema": GRADING_RESPONSE_SCHEMA},
+            response_format={"type": "json_schema", "json_schema": schema},
             temperature=0,
         )
         return response.choices[0].message.content
@@ -93,12 +88,12 @@ class AnthropicProvider:
             self._client = Anthropic(api_key=self.api_key) if self.api_key else Anthropic()
         return self._client
 
-    def complete_json(self, system_prompt, user_text, image_data_urls=None):
+    def complete_json(self, system_prompt, user_text, schema, image_data_urls=None):
         response = self._ensure_client().messages.create(
             model=self.model,
             max_tokens=4096,
             system=system_prompt,
-            output_config={"format": {"type": "json_schema", "schema": GRADING_JSON_SCHEMA}},
+            output_config={"format": {"type": "json_schema", "schema": schema["schema"]}},
             messages=[{"role": "user", "content": self._build_content(user_text, image_data_urls)}],
         )
         return next(block.text for block in response.content if block.type == "text")
@@ -134,10 +129,10 @@ class GeminiProvider:
             self._model = genai.GenerativeModel(self.model)
         return self._model
 
-    def complete_json(self, system_prompt, user_text, image_data_urls=None):
+    def complete_json(self, system_prompt, user_text, schema, image_data_urls=None):
         schema_instruction = (
             f"{system_prompt}\n\nReturn only JSON matching this schema:\n"
-            f"{json.dumps(GRADING_JSON_SCHEMA)}"
+            f"{json.dumps(schema['schema'])}"
         )
         parts = [schema_instruction, user_text]
         for image_url in image_data_urls or []:

@@ -1,8 +1,6 @@
 import json
 from decimal import Decimal, InvalidOperation
 
-from .pdf_submissions import render_pdf_pages_as_data_urls
-
 
 GRADER_PROMPT = """You are a precise, objective academic grading assistant.
 
@@ -66,7 +64,7 @@ STUDENT RESPONSE:
 
 def grade_text_response(provider, student_id, question_id, student_answer, mark_scheme_snippet):
     user_text = build_dispatch_payload(student_id, question_id, student_answer, mark_scheme_snippet)
-    content = provider.complete_json(GRADER_PROMPT, user_text)
+    content = provider.complete_json(GRADER_PROMPT, user_text, GRADING_RESPONSE_SCHEMA)
     return parse_grading_response(content, student_id, question_id)
 
 
@@ -81,10 +79,9 @@ STUDENT RESPONSE:
 The student's handwritten response is attached as page images from their submitted PDF. Read the handwriting directly from the images. If a page or answer is illegible, say so in the evidence and avoid awarding unsupported marks."""
 
 
-def grade_pdf_response(provider, student_id, question_id, response_pdf_path, mark_scheme_snippet):
-    image_urls = render_pdf_pages_as_data_urls(response_pdf_path)
+def grade_pdf_images(provider, student_id, question_id, image_urls, mark_scheme_snippet):
     user_text = build_pdf_dispatch_text(student_id, question_id, mark_scheme_snippet)
-    content = provider.complete_json(GRADER_PROMPT, user_text, image_urls)
+    content = provider.complete_json(GRADER_PROMPT, user_text, GRADING_RESPONSE_SCHEMA, image_urls)
     return parse_grading_response(content, student_id, question_id)
 
 

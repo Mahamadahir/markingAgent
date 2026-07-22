@@ -49,3 +49,10 @@ coll = COLLECT(
     upx_exclude=[],
     name='GradeAudit',
 )
+
+app = BUNDLE(
+    coll,
+    name='GradeAudit.app',
+    icon=None,
+    bundle_identifier='com.mahamadahir.gradeaudit',
+)

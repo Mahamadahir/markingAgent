@@ -71,8 +71,9 @@ class AppServiceTests(unittest.TestCase):
 
             settings = object()
             with mock.patch.object(app_service, "build_provider", return_value=FakeProvider(full_script_evaluation("STUDENT_001"))):
-                with mock.patch.object(app_service, "grade_pdf_response", return_value=full_script_evaluation("STUDENT_001")) as graded:
-                    evaluation = service.grade_item(settings, mark_scheme_path, item)
+                with mock.patch("marking_agent.page_mapping.render_pdf_pages_as_data_urls", return_value=["page"]):
+                    with mock.patch.object(app_service, "grade_pdf_images", return_value=full_script_evaluation("STUDENT_001")) as graded:
+                        evaluation = service.grade_item(settings, mark_scheme_path, item)
 
             self.assertEqual(evaluation["student_id"], "STUDENT_001")
             graded.assert_called_once()
@@ -88,7 +89,7 @@ class AppServiceTests(unittest.TestCase):
             item = service.load_exam_items(directory)[0]
             save_provisional_evaluation(service.connection, service.exam_id, "STUDENT_001", FULL_SCRIPT_QUESTION_ID, full_script_evaluation("STUDENT_001", marks=1))
 
-            with mock.patch.object(app_service, "grade_pdf_response") as graded:
+            with mock.patch.object(app_service, "grade_pdf_images") as graded:
                 evaluation = service.grade_item(object(), mark_scheme_path, item)
 
             graded.assert_not_called()

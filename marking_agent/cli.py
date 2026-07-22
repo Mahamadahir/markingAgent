@@ -16,10 +16,11 @@ from .config import (
 from .grading import (
     decimal_from_value,
     format_decimal,
-    grade_pdf_response,
+    grade_pdf_images,
     render_evaluation,
     validate_score_range,
 )
+from .page_mapping import ScriptPages
 from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
 from .pdf_extract import extract_pdf_text, write_extracted_text
@@ -121,7 +122,7 @@ def prompt_override_reason():
         print("Override reason is required.")
 
 
-def get_or_create_evaluation(connection, exam_id, args, provider, submission, mark_scheme):
+def get_or_create_evaluation(connection, exam_id, args, resolver, submission, mark_scheme):
     student_id = submission["student_id"]
     question_id = submission["question_id"]
     existing_record = get_record(connection, exam_id, student_id, question_id)
@@ -134,11 +135,12 @@ def get_or_create_evaluation(connection, exam_id, args, provider, submission, ma
 
     mark_scheme_snippet = mark_scheme_for_question(mark_scheme, question_id)
 
-    evaluation = grade_pdf_response(
-        provider,
+    image_urls = resolver.pages_for(submission["pdf_path"], question_id)
+    evaluation = grade_pdf_images(
+        resolver.provider,
         student_id,
         question_id,
-        submission["pdf_path"],
+        image_urls,
         mark_scheme_snippet,
     )
     save_provisional_evaluation(connection, exam_id, student_id, question_id, evaluation, force=args.no_resume)
@@ -168,8 +170,9 @@ def grade_all(args):
     output_path = Path(args.output)
 
     mark_scheme = load_mark_scheme(mark_scheme_path)
+    question_ids = list_question_ids(mark_scheme)
     submissions = load_pdf_submissions(submissions_path)
-    submissions = expand_submissions_by_question(submissions, list_question_ids(mark_scheme))
+    submissions = expand_submissions_by_question(submissions, question_ids)
     connection = connect_database(db_path)
     initialise_database(connection)
     exam_id = ensure_exam(
@@ -188,6 +191,7 @@ def grade_all(args):
             azure_api_version=args.azure_api_version,
         )
     )
+    resolver = ScriptPages(provider, question_ids)
 
     try:
         print(f"Exam: {args.exam_name} ({exam_id})")
@@ -200,7 +204,7 @@ def grade_all(args):
                 connection,
                 exam_id,
                 args,
-                provider,
+                resolver,
                 submission,
                 mark_scheme,
             )

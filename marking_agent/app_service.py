@@ -4,10 +4,11 @@ from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH
 from .grading import (
     decimal_from_value,
     format_decimal,
-    grade_pdf_response,
+    grade_pdf_images,
     grade_text_response,
     validate_score_range,
 )
+from .page_mapping import ScriptPages
 from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
 from .pdf_submissions import (
@@ -41,6 +42,8 @@ class AppService:
         self.exam_id = ensure_exam(self.connection, exam_id=exam_id, name=exam_name)
         self._provider = None
         self._provider_settings = None
+        self._resolver = None
+        self._resolver_key = None
 
     def close(self):
         self.connection.close()
@@ -94,6 +97,13 @@ class AppService:
             self._provider_settings = settings
         return self._provider
 
+    def resolver_for(self, settings, question_ids):
+        key = (settings, tuple(question_ids))
+        if self._resolver is None or key != self._resolver_key:
+            self._resolver = ScriptPages(self.provider_for(settings), question_ids)
+            self._resolver_key = key
+        return self._resolver
+
     def grade_item(self, settings, mark_scheme_path, item, force=False):
         student_id = item["student_id"]
         question_id = item["question_id"]
@@ -110,11 +120,13 @@ class AppService:
         provider = self.provider_for(settings)
 
         if "pdf_path" in item:
-            evaluation = grade_pdf_response(
+            resolver = self.resolver_for(settings, list_question_ids(mark_scheme))
+            image_urls = resolver.pages_for(item["pdf_path"], question_id)
+            evaluation = grade_pdf_images(
                 provider,
                 student_id,
                 question_id,
-                item["pdf_path"],
+                image_urls,
                 snippet,
             )
         else:

@@ -136,7 +136,9 @@ The model output is provisional. The CLI requires a human to approve or override
 
 The question IDs come from the mark scheme headings (`# Q1`, `Question 2`, and similar). Each student script is graded once per question, against that question's mark scheme snippet, and stored as a separate record. If the mark scheme has no question headings, the whole script is graded once as a single `FULL_SCRIPT` item.
 
-Each question sends the full script page images to the model, since there is no page-to-question mapping yet. Grading a script against several questions therefore repeats the image upload per question, which costs more API tokens. Mapping pages to questions to send only the relevant pages is a later optimisation.
+To avoid sending every page to the model for every question, each script goes through one classification pass first: the page images and the question IDs are sent to the model, which labels each page with the questions answered on it. Grading a question then sends only that question's pages. Because the map is built per student from the actual script, it handles answers that overflow onto extra pages or run out of order. When the model is not confident about a page, or a question ends up with no pages assigned, grading falls back to sending the whole script for that question, so a bad map never silently grades a blank page.
+
+The classification pass costs one extra model call per script, paid once and reused across that script's questions.
 
 ### Grading Providers
 
