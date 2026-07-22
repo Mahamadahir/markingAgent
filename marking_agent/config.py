@@ -12,6 +12,8 @@ DEFAULT_EXAM_NAME = "Default Exam"
 
 DEFAULT_MODEL_ENV = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
 
+DEFAULT_OCR_MODE = os.environ.get("MARKING_OCR_MODE", "never")
+
 DEFAULT_PROVIDER = os.environ.get("GRADING_PROVIDER", "openai")
 DEFAULT_AZURE_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 DEFAULT_AZURE_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")

@@ -8,6 +8,7 @@ from .config import (
     DEFAULT_DB_PATH,
     DEFAULT_EXAM_NAME,
     DEFAULT_MODEL_ENV,
+    DEFAULT_OCR_MODE,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_PROVIDER,
     DEFAULT_SUBMISSIONS_PATH,
@@ -15,6 +16,7 @@ from .config import (
     default_model_for_provider,
     provider_settings,
 )
+from .pdf_extract import OCR_MODES
 from .grading import render_evaluation
 from .state import APPROVED, OVERRIDDEN
 
@@ -126,6 +128,9 @@ def run():
             self.question_paper_pdf = FilePicker("Question paper PDF reference", "data/input/question_paper.pdf")
             self.submissions_path = FilePicker("Student response PDFs folder", str(DEFAULT_SUBMISSIONS_PATH), mode="directory")
             self.mark_scheme_text = FilePicker("Extracted mark scheme text", "data/extracted/mark_scheme.txt")
+            self.ocr_mode = QComboBox()
+            self.ocr_mode.addItems(OCR_MODES)
+            self.ocr_mode.setCurrentText(DEFAULT_OCR_MODE)
             self.database_path = QLineEdit(str(DEFAULT_DB_PATH))
             self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
             self.model_name = QLineEdit(DEFAULT_MODEL_ENV)
@@ -154,6 +159,15 @@ def run():
 
             for widget in [self.mark_scheme_pdf, self.question_paper_pdf, self.submissions_path, self.mark_scheme_text]:
                 layout.addWidget(self.card(widget))
+
+            ocr_card = QFrame()
+            ocr_layout = QGridLayout(ocr_card)
+            ocr_layout.addWidget(QLabel("Mark scheme OCR"), 0, 0)
+            ocr_layout.addWidget(self.ocr_mode, 1, 0)
+            ocr_layout.addWidget(
+                QLabel("never: embedded text only  •  auto: OCR blank pages  •  always: OCR every page"), 1, 1
+            )
+            layout.addWidget(self.card(ocr_card))
 
             provider_card = QFrame()
             provider_layout = QGridLayout(provider_card)
@@ -302,7 +316,7 @@ def run():
                     QMessageBox.warning(self, "Missing mark scheme", "Choose a mark scheme PDF first.")
                     return
                 output = self.mark_scheme_text.text() or "data/extracted/mark_scheme.txt"
-                self.service.extract_pdf(self.mark_scheme_pdf.text(), output)
+                self.service.extract_pdf(self.mark_scheme_pdf.text(), output, ocr_mode=self.ocr_mode.currentText())
                 self.add_extracted_document(output)
                 QMessageBox.information(self, "Extraction complete", "Mark scheme text extraction finished. Question papers remain as PDF references.")
             except Exception as error:

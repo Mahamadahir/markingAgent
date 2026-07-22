@@ -57,8 +57,8 @@ class AppService:
         self.exam_id = ensure_exam(self.connection, exam_id=exam_id, name=exam_name or DEFAULT_EXAM_NAME, **metadata)
         return self.exam_id
 
-    def extract_pdf(self, pdf_path, output_path):
-        pages = extract_pdf_text(Path(pdf_path))
+    def extract_pdf(self, pdf_path, output_path, ocr_mode="never"):
+        pages = extract_pdf_text(Path(pdf_path), ocr_mode=ocr_mode)
         write_extracted_text(pages, Path(output_path))
         return pages
 

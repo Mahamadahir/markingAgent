@@ -110,7 +110,29 @@ python main.py extract-pdf data/input/mark_scheme.pdf data/extracted/mark_scheme
 
 Question papers and handwritten student responses stay as PDFs. Do not convert handwritten exam papers to text with this pipeline. The app turns each student response PDF page into an image and sends the page images to the grading model.
 
-`pypdf` only extracts embedded text from selectable PDFs, so scanned mark schemes need OCR first. Student response PDFs do not need embedded text.
+`pypdf` only extracts embedded text from selectable PDFs. Scanned mark schemes have no text layer, so `pypdf` returns nothing. Student response PDFs do not need embedded text.
+
+### OCR for scanned mark schemes
+
+Extraction has an OCR mode you choose per run:
+
+- `never` (default): embedded text only, no OCR. Fast, and correct for digitally created PDFs.
+- `auto`: use embedded text, and run OCR only on pages that come back empty. Handles a mix of digital and scanned pages without paying OCR cost on clean ones.
+- `always`: OCR every page, ignoring any embedded text.
+
+```bash
+python main.py extract-pdf data/input/mark_scheme.pdf data/extracted/mark_scheme.txt --ocr auto
+```
+
+The default also reads from `MARKING_OCR_MODE`. The desktop Project Setup has a Mark scheme OCR dropdown with the same three modes.
+
+OCR uses Tesseract, so it needs the system binary in addition to the Python packages:
+
+```bash
+sudo apt install -y tesseract-ocr
+```
+
+On macOS: `brew install tesseract`.
 
 ## Grading
 

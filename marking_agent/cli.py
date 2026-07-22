@@ -7,6 +7,7 @@ from .config import (
     DEFAULT_EXAM_NAME,
     DEFAULT_MARK_SCHEME_PATH,
     DEFAULT_MODEL_ENV,
+    DEFAULT_OCR_MODE,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_PROVIDER,
     DEFAULT_SUBMISSIONS_PATH,
@@ -23,7 +24,7 @@ from .grading import (
 from .page_mapping import ScriptPages
 from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
-from .pdf_extract import extract_pdf_text, write_extracted_text
+from .pdf_extract import OCR_MODES, extract_pdf_text, write_extracted_text
 from .pdf_submissions import (
     FULL_SCRIPT_QUESTION_ID,
     expand_submissions_by_question,
@@ -57,6 +58,12 @@ def parse_args():
     extract_parser = subparsers.add_parser("extract-pdf", help="Extract selectable text from a mark scheme PDF.")
     extract_parser.add_argument("pdf_path")
     extract_parser.add_argument("output_path")
+    extract_parser.add_argument(
+        "--ocr",
+        default=DEFAULT_OCR_MODE,
+        choices=OCR_MODES,
+        help="never: embedded text only; auto: OCR pages with no text; always: OCR every page.",
+    )
 
     export_parser = subparsers.add_parser("export-csv", help="Export finalised grades from SQLite to CSV.")
     export_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
@@ -237,7 +244,7 @@ def grade_all(args):
 
 
 def extract_pdf_command(args):
-    pages = extract_pdf_text(Path(args.pdf_path))
+    pages = extract_pdf_text(Path(args.pdf_path), ocr_mode=args.ocr)
     write_extracted_text(pages, Path(args.output_path))
     print(f"Extracted {len(pages)} page(s) to {args.output_path}")
 
