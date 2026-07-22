@@ -8,8 +8,13 @@ from pathlib import Path
 from marking_agent.config import CSV_FIELDNAMES
 from marking_agent.grading import build_pdf_dispatch_text, validate_evaluation, validate_score_range
 from marking_agent.providers import build_openai_content
-from marking_agent.mark_scheme import extract_mark_scheme_snippet
-from marking_agent.pdf_submissions import FULL_SCRIPT_QUESTION_ID, image_data_url, load_pdf_submissions
+from marking_agent.mark_scheme import extract_mark_scheme_snippet, list_question_ids
+from marking_agent.pdf_submissions import (
+    FULL_SCRIPT_QUESTION_ID,
+    expand_submissions_by_question,
+    image_data_url,
+    load_pdf_submissions,
+)
 from marking_agent.state import (
     AI_GENERATED,
     APPROVED,
@@ -48,6 +53,14 @@ class MarkSchemeTests(unittest.TestCase):
 
         self.assertEqual(snippet, mark_scheme)
 
+    def test_lists_question_ids_in_order_without_duplicates(self):
+        mark_scheme = "# Q1\nOne\n\n# Q2\nTwo\n\n# Q1\nMore of one"
+
+        self.assertEqual(list_question_ids(mark_scheme), ["Q1", "Q2"])
+
+    def test_lists_no_questions_when_no_headings(self):
+        self.assertEqual(list_question_ids("General marking notes"), [])
+
 
 class PdfSubmissionTests(unittest.TestCase):
     def test_loads_pdf_submissions_from_directory(self):
@@ -70,6 +83,21 @@ class PdfSubmissionTests(unittest.TestCase):
             submissions = load_pdf_submissions(path)
 
             self.assertEqual(submissions, [{"student_id": "STUDENT_001", "question_id": FULL_SCRIPT_QUESTION_ID, "pdf_path": str(path)}])
+
+    def test_expands_one_submission_into_one_item_per_question(self):
+        submissions = [{"student_id": "STUDENT_001", "question_id": FULL_SCRIPT_QUESTION_ID, "pdf_path": "a.pdf"}]
+
+        items = expand_submissions_by_question(submissions, ["Q1", "Q2"])
+
+        self.assertEqual(
+            [(item["student_id"], item["question_id"], item["pdf_path"]) for item in items],
+            [("STUDENT_001", "Q1", "a.pdf"), ("STUDENT_001", "Q2", "a.pdf")],
+        )
+
+    def test_expansion_is_a_noop_without_questions(self):
+        submissions = [{"student_id": "STUDENT_001", "question_id": FULL_SCRIPT_QUESTION_ID, "pdf_path": "a.pdf"}]
+
+        self.assertEqual(expand_submissions_by_question(submissions, []), submissions)
 
     def test_builds_pdf_image_dispatch_content(self):
         image_url = image_data_url(b"image-bytes", "image/png")

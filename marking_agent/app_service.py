@@ -9,8 +9,12 @@ from .grading import (
     validate_score_range,
 )
 from .providers import build_provider
-from .mark_scheme import extract_mark_scheme_snippet
-from .pdf_submissions import FULL_SCRIPT_QUESTION_ID, load_pdf_submissions
+from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
+from .pdf_submissions import (
+    FULL_SCRIPT_QUESTION_ID,
+    expand_submissions_by_question,
+    load_pdf_submissions,
+)
 from .pdf_extract import extract_pdf_text, write_extracted_text
 from .state import (
     APPROVED,
@@ -53,8 +57,14 @@ class AppService:
         write_extracted_text(pages, Path(output_path))
         return pages
 
-    def load_exam_items(self, submissions_path):
+    def _question_ids(self, mark_scheme_path):
+        if not mark_scheme_path or not Path(mark_scheme_path).exists():
+            return []
+        return list_question_ids(load_mark_scheme(Path(mark_scheme_path)))
+
+    def load_exam_items(self, submissions_path, mark_scheme_path=None):
         submissions = load_pdf_submissions(Path(submissions_path))
+        submissions = expand_submissions_by_question(submissions, self._question_ids(mark_scheme_path))
         items = []
         for submission in submissions:
             student_id = submission["student_id"]

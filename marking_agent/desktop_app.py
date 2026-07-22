@@ -344,7 +344,10 @@ def run():
                     question_paper_path=self.question_paper_pdf.text(),
                     students_path=self.submissions_path.text(),
                 )
-                self.exam_items = self.service.load_exam_items(self.submissions_path.text())
+                self.exam_items = self.service.load_exam_items(
+                    self.submissions_path.text(),
+                    self.mark_scheme_text.text(),
+                )
                 self.item_list.clear()
                 for item in self.exam_items:
                     self.item_list.addItem(f"{item['student_id']} | {item['question_id']} | {item['status']}")

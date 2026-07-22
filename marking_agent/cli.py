@@ -21,9 +21,13 @@ from .grading import (
     validate_score_range,
 )
 from .providers import build_provider
-from .mark_scheme import extract_mark_scheme_snippet
+from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
 from .pdf_extract import extract_pdf_text, write_extracted_text
-from .pdf_submissions import FULL_SCRIPT_QUESTION_ID, load_pdf_submissions
+from .pdf_submissions import (
+    FULL_SCRIPT_QUESTION_ID,
+    expand_submissions_by_question,
+    load_pdf_submissions,
+)
 from .state import (
     APPROVED,
     OVERRIDDEN,
@@ -165,6 +169,7 @@ def grade_all(args):
 
     mark_scheme = load_mark_scheme(mark_scheme_path)
     submissions = load_pdf_submissions(submissions_path)
+    submissions = expand_submissions_by_question(submissions, list_question_ids(mark_scheme))
     connection = connect_database(db_path)
     initialise_database(connection)
     exam_id = ensure_exam(

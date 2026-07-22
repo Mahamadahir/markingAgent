@@ -24,6 +24,15 @@ def question_heading_id(line):
     return normalise_question_id(match.group(2))
 
 
+def list_question_ids(mark_scheme):
+    question_ids = []
+    for line in mark_scheme.splitlines():
+        heading_id = question_heading_id(line)
+        if heading_id and heading_id not in question_ids:
+            question_ids.append(heading_id)
+    return question_ids
+
+
 def extract_mark_scheme_snippet(mark_scheme, question_id):
     target_id = normalise_question_id(question_id)
     lines = mark_scheme.splitlines()

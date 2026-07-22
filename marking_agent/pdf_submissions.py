@@ -39,6 +39,20 @@ def submission_from_pdf(pdf_path):
     }
 
 
+def expand_submissions_by_question(submissions, question_ids):
+    if not question_ids:
+        return submissions
+    return [
+        {
+            "student_id": submission["student_id"],
+            "question_id": question_id,
+            "pdf_path": submission["pdf_path"],
+        }
+        for submission in submissions
+        for question_id in question_ids
+    ]
+
+
 def render_pdf_pages_as_data_urls(pdf_path, dpi=DEFAULT_RENDER_DPI, max_pages=DEFAULT_MAX_PAGES):
     try:
         import fitz

@@ -130,7 +130,13 @@ python main.py grade \
   --output data/output/grading_output.csv
 ```
 
-The model output is provisional. The CLI requires a human to approve or override every score before it becomes final. Current grading treats each student PDF as one `FULL_SCRIPT`; question-level page mapping can be added later.
+The model output is provisional. The CLI requires a human to approve or override every score before it becomes final.
+
+### Question-Level Grading
+
+The question IDs come from the mark scheme headings (`# Q1`, `Question 2`, and similar). Each student script is graded once per question, against that question's mark scheme snippet, and stored as a separate record. If the mark scheme has no question headings, the whole script is graded once as a single `FULL_SCRIPT` item.
+
+Each question sends the full script page images to the model, since there is no page-to-question mapping yet. Grading a script against several questions therefore repeats the image upload per question, which costs more API tokens. Mapping pages to questions to send only the relevant pages is a later optimisation.
 
 ### Grading Providers
 
