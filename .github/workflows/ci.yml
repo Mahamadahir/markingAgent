@@ -3,6 +3,11 @@ name: CI
 on:
   push:
     branches: [master]
+    paths:
+      - "marking_agent/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/**"
   pull_request:
 
 jobs:
