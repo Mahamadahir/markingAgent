@@ -38,14 +38,17 @@
 - Roster mapping: map filenames to real student names from an imported roster. Prerequisite for cross-exam student history.
 - Anonymised marking: strip or redact names before grading, re-attach after.
 
+Note: the input items and any LMS integration are only worth building if the real workflow hits them. Do not build speculatively.
+
 ### Topics and history (exploring)
 - Topic labelling per question: tag each question with the topic it covers (model-derived in a pass over the mark scheme, or manual). Independent of the DB work; enables topic-level analytics and longitudinal feedback. Smallest, highest-value of this group — do first.
-- History-aware feedback sheets: generate per-student feedback from a student's finalised records across all exams, so it can discuss trends and improvement. Needs persistent student identity (roster mapping) and benefits from topic labelling. Data-protection note: sending a full student history to an external LLM is sensitive personal data — decide provider/retention deliberately.
+- History-aware feedback sheets: generate per-student feedback from the student's stored structured records across all exams (finalised marks, topic tags, criteria breakdown, notes), not the raw scripts. The raw scripts never leave the grading step. Sourcing from the records is the data-minimising, cheaper (text not images), cross-exam-by-query version. Needs persistent student identity (roster mapping) and benefits from topic labelling. Data-protection note: even the structured history is sensitive personal data — decide provider/retention deliberately (see Azure OpenAI below).
 
-### Institutional / multi-user (product pivot — decide direction first)
-- These turn the local single-user tool into a shared service. Do not build piecemeal onto the desktop app; confirm the product direction before starting.
+## Final potential steps (institutional / multi-user)
+
+A product pivot: these turn the local single-user tool into a shared institutional service. Do not build piecemeal onto the desktop app; confirm the product direction before starting any of this.
+
 - PostgreSQL as a database option. The hinge for multi-user. Introduce a data-access layer (SQLAlchemy Core or a repository interface) once, targeting SQLite (local) or Postgres (shared) via a connection URL, rather than hand-porting the raw SQL in `state.py` to two dialects.
 - Multi-user with departments. Organisation → department → user model, exams scoped to a department, roles (marker, moderator, admin), per-department usage tracking and quotas. Needs Postgres and auth (likely institution SSO).
 - Server-side single API key. For an institutional shared key the key must move server-side and every model call be brokered by a backend — never distributed to desktop clients. This effectively requires growing a server, with the desktop or a web client as a thin authenticated front-end.
-
-Note: the input items and any LMS integration are only worth building if the real workflow hits them. Do not build speculatively.
+- Azure OpenAI as the recommended provider for an institutional deployment and for history-based feedback: model runs in the institution's own Azure tenant, not used for training, region-pinned for UK/EU residency, enterprise DPA, and optional zero data retention (apply for the modified abuse-monitoring exemption). Still requires a DPIA and lawful basis — Azure makes the paperwork passable, not unnecessary.
