@@ -1,6 +1,6 @@
 # Marking Agent
 
-A human-reviewed exam grading CLI and desktop prototype. It supports multiple exam projects, extracts the mark scheme to text, keeps handwritten exam papers as PDF references, sends one student answer and one mark-scheme snippet to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
+A human-reviewed exam grading CLI and desktop prototype. It supports multiple exam projects, extracts the mark scheme to text, keeps handwritten exam papers as PDF references, sends each handwritten student response PDF as page images with the mark scheme text to an OpenAI model, saves provisional grading state in SQLite, and requires a human decision before final grades are exported.
 
 ## Status
 
@@ -17,7 +17,8 @@ marking_agent/
   mark_scheme.py           # question-specific mark scheme extraction
   pdf_extract.py           # selectable-text mark scheme PDF extraction
   state.py                 # SQLite state saving
-  storage.py               # JSON loading and CSV export
+  pdf_submissions.py       # handwritten PDF submission loading and page rendering
+  storage.py               # text loading and CSV export
 data/
   input/                   # local PDFs and source files
   extracted/               # extracted text files
@@ -45,21 +46,18 @@ export OPENAI_API_KEY='your-key-here'
 The grading command expects:
 
 - a mark scheme text file
-- a student responses JSON file
+- a folder of student response PDFs
 
-Example `students_exams.json`:
+Put one handwritten script PDF per student in the submissions folder. The filename becomes the student ID:
 
-```json
-[
-  {
-    "student_id": "STUDENT_001",
-    "exam_responses": {
-      "Q1": "Student answer text...",
-      "Q2": "Student answer text..."
-    }
-  }
-]
+```text
+data/input/submissions/
+  STUDENT_001.pdf
+  STUDENT_002.pdf
+  STUDENT_003.pdf
 ```
+
+Each PDF is graded as a `FULL_SCRIPT` item against the mark scheme. The app rasterises the PDF pages locally and sends those page images to an image-capable OpenAI model.
 
 Mark scheme headings should identify questions, for example:
 
@@ -83,7 +81,7 @@ Create or reuse an exam by name when grading:
 python main.py grade \
   --exam-name "Biology Paper 1" \
   --mark-scheme data/extracted/biology_paper_1_mark_scheme.txt \
-  --students data/input/biology_paper_1_students.json \
+  --submissions data/input/biology_paper_1_submissions \
   --output data/output/biology_paper_1.csv
 ```
 
@@ -110,9 +108,9 @@ Only the mark scheme is converted to text:
 python main.py extract-pdf data/input/mark_scheme.pdf data/extracted/mark_scheme.txt
 ```
 
-Question papers and handwritten exam papers stay as PDFs. Do not convert handwritten exam papers to text with this pipeline. Student responses still need to be provided in `students_exams.json` until a separate handwriting/OCR workflow is added.
+Question papers and handwritten student responses stay as PDFs. Do not convert handwritten exam papers to text with this pipeline. The app turns each student response PDF page into an image and sends the page images to the grading model.
 
-`pypdf` only extracts embedded text from selectable PDFs, so scanned mark schemes need OCR first.
+`pypdf` only extracts embedded text from selectable PDFs, so scanned mark schemes need OCR first. Student response PDFs do not need embedded text.
 
 ## Grading
 
@@ -127,12 +125,35 @@ Run with explicit paths:
 ```bash
 python main.py grade \
   --mark-scheme data/extracted/mark_scheme.txt \
-  --students students_exams.json \
+  --submissions data/input/submissions \
   --db data/output/grading_state.sqlite3 \
   --output data/output/grading_output.csv
 ```
 
-The model output is provisional. The CLI requires a human to approve or override every score before it becomes final.
+The model output is provisional. The CLI requires a human to approve or override every score before it becomes final. Current grading treats each student PDF as one `FULL_SCRIPT`; question-level page mapping can be added later.
+
+### Grading Providers
+
+The grading call is behind a provider interface, so the same pipeline runs against either the public OpenAI API or Azure OpenAI in a corporate tenant. Both share the request format; only the client construction differs.
+
+Default provider is OpenAI, reading `OPENAI_API_KEY`:
+
+```bash
+python main.py grade --provider openai --model gpt-4o
+```
+
+For Azure OpenAI, `--model` is the deployment name, and the client reads `AZURE_OPENAI_API_KEY`:
+
+```bash
+export AZURE_OPENAI_API_KEY='your-key-here'
+python main.py grade \
+  --provider azure \
+  --model my-gpt4o-deployment \
+  --azure-endpoint https://my-resource.openai.azure.com \
+  --azure-api-version 2024-08-01-preview
+```
+
+The provider, endpoint, and API version also read from `GRADING_PROVIDER`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_API_VERSION`. Adding a provider means implementing one `complete_json` method in `marking_agent/providers.py`.
 
 ## Desktop App
 
@@ -218,7 +239,7 @@ Run tests:
 python -m unittest
 ```
 
-The tests cover question snippet extraction, score validation, SQLite state saving, resume protection, and CSV export.
+The tests cover question snippet extraction, PDF submission loading, image payload construction, score validation, SQLite state saving, resume protection, and CSV export.
 
 ## Development Notes
 

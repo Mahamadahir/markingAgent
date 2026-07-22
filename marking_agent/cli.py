@@ -8,18 +8,21 @@ from .config import (
     DEFAULT_MARK_SCHEME_PATH,
     DEFAULT_MODEL_ENV,
     DEFAULT_OUTPUT_PATH,
-    DEFAULT_STUDENTS_PATH,
+    DEFAULT_PROVIDER,
+    DEFAULT_SUBMISSIONS_PATH,
+    provider_settings,
 )
 from .grading import (
-    call_grading_agent,
-    create_openai_client,
     decimal_from_value,
     format_decimal,
+    grade_pdf_response,
     render_evaluation,
     validate_score_range,
 )
+from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet
 from .pdf_extract import extract_pdf_text, write_extracted_text
+from .pdf_submissions import FULL_SCRIPT_QUESTION_ID, load_pdf_submissions
 from .state import (
     APPROVED,
     OVERRIDDEN,
@@ -34,7 +37,7 @@ from .state import (
     save_human_decision,
     save_provisional_evaluation,
 )
-from .storage import export_records_to_csv, load_mark_scheme, load_student_data
+from .storage import export_records_to_csv, load_mark_scheme
 
 
 def parse_args():
@@ -65,10 +68,13 @@ def add_grading_arguments(parser):
     parser.add_argument("--exam-id", type=str, default="")
     parser.add_argument("--exam-name", type=str, default=DEFAULT_EXAM_NAME)
     parser.add_argument("--mark-scheme", type=str, default=str(DEFAULT_MARK_SCHEME_PATH))
-    parser.add_argument("--students", type=str, default=str(DEFAULT_STUDENTS_PATH))
+    parser.add_argument("--submissions", type=str, default=str(DEFAULT_SUBMISSIONS_PATH))
     parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
     parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT_PATH))
     parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=["openai", "azure"])
+    parser.add_argument("--azure-endpoint", default=None)
+    parser.add_argument("--azure-api-version", default=None)
     parser.add_argument(
         "--no-resume",
         action="store_true",
@@ -109,7 +115,9 @@ def prompt_override_reason():
         print("Override reason is required.")
 
 
-def get_or_create_evaluation(connection, exam_id, args, client_holder, student_id, question_id, student_answer, mark_scheme):
+def get_or_create_evaluation(connection, exam_id, args, provider, submission, mark_scheme):
+    student_id = submission["student_id"]
+    question_id = submission["question_id"]
     existing_record = get_record(connection, exam_id, student_id, question_id)
     if existing_record and not args.no_resume:
         if is_final_record(existing_record):
@@ -118,23 +126,27 @@ def get_or_create_evaluation(connection, exam_id, args, client_holder, student_i
         print(f"Resuming saved provisional evaluation: {student_id} | {question_id}")
         return evaluation_from_record(existing_record)
 
-    mark_scheme_snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
-    if mark_scheme_snippet == mark_scheme.strip():
-        print(f"Warning: no specific mark scheme snippet found for {question_id}.")
+    mark_scheme_snippet = mark_scheme_for_question(mark_scheme, question_id)
 
-    if client_holder["client"] is None:
-        client_holder["client"] = create_openai_client()
-
-    evaluation = call_grading_agent(
-        client_holder["client"],
-        args.model,
+    evaluation = grade_pdf_response(
+        provider,
         student_id,
         question_id,
-        student_answer,
+        submission["pdf_path"],
         mark_scheme_snippet,
     )
     save_provisional_evaluation(connection, exam_id, student_id, question_id, evaluation, force=args.no_resume)
     return evaluation
+
+
+def mark_scheme_for_question(mark_scheme, question_id):
+    if question_id == FULL_SCRIPT_QUESTION_ID:
+        return mark_scheme
+
+    snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
+    if snippet == mark_scheme.strip():
+        print(f"Warning: no specific mark scheme snippet found for {question_id}.")
+    return snippet
 
 
 def export_finalised_records(connection, output_path, exam_id=None):
@@ -145,12 +157,12 @@ def export_finalised_records(connection, output_path, exam_id=None):
 
 def grade_all(args):
     mark_scheme_path = Path(args.mark_scheme)
-    students_path = Path(args.students)
+    submissions_path = Path(args.submissions)
     db_path = Path(args.db)
     output_path = Path(args.output)
 
     mark_scheme = load_mark_scheme(mark_scheme_path)
-    student_data = load_student_data(students_path)
+    submissions = load_pdf_submissions(submissions_path)
     connection = connect_database(db_path)
     initialise_database(connection)
     exam_id = ensure_exam(
@@ -158,50 +170,49 @@ def grade_all(args):
         exam_id=args.exam_id or None,
         name=args.exam_name,
         mark_scheme_path=str(mark_scheme_path),
-        students_path=str(students_path),
+        students_path=str(submissions_path),
     )
-    client_holder = {"client": None}
+    provider = build_provider(
+        provider_settings(args.model, args.provider, args.azure_endpoint, args.azure_api_version)
+    )
 
     try:
         print(f"Exam: {args.exam_name} ({exam_id})")
-        for student_entry in student_data:
-            student_id = student_entry["student_id"]
-            responses = student_entry["exam_responses"]
+        for submission in submissions:
+            student_id = submission["student_id"]
+            question_id = submission["question_id"]
+            print()
+            print(f"Running evaluation: {student_id} | {question_id}")
+            evaluation = get_or_create_evaluation(
+                connection,
+                exam_id,
+                args,
+                provider,
+                submission,
+                mark_scheme,
+            )
+            if evaluation is None:
+                continue
 
-            for question_id, student_answer in responses.items():
-                print(f"\nRunning evaluation: {student_id} | {question_id}")
-                evaluation = get_or_create_evaluation(
-                    connection,
-                    exam_id,
-                    args,
-                    client_holder,
-                    student_id,
-                    question_id,
-                    student_answer,
-                    mark_scheme,
-                )
-                if evaluation is None:
-                    continue
+            print()
+            print(render_evaluation(evaluation))
+            print()
 
-                print()
-                print(render_evaluation(evaluation))
-                print()
+            total_marks = decimal_from_value(evaluation["total_marks_available"])
+            proposed_score = format_decimal(decimal_from_value(evaluation["proposed_marks_awarded"]))
+            action = prompt_action()
 
-                total_marks = decimal_from_value(evaluation["total_marks_available"])
-                proposed_score = format_decimal(decimal_from_value(evaluation["proposed_marks_awarded"]))
-                action = prompt_action()
+            if action == APPROVED:
+                final_score = prompt_score("Confirm numeric score to log", total_marks, proposed_score)
+                notes = "Approved AI assessment."
+            else:
+                final_score = prompt_score("Input overridden numeric score", total_marks)
+                notes = prompt_override_reason()
 
-                if action == APPROVED:
-                    final_score = prompt_score("Confirm numeric score to log", total_marks, proposed_score)
-                    notes = "Approved AI assessment."
-                else:
-                    final_score = prompt_score("Input overridden numeric score", total_marks)
-                    notes = prompt_override_reason()
-
-                save_human_decision(connection, exam_id, student_id, question_id, evaluation, action, final_score, notes)
-                exported_count = export_finalised_records(connection, output_path, exam_id=exam_id)
-                print(f"Recorded: {student_id} | {question_id}")
-                print(f"Exported {exported_count} finalised record(s) to {output_path}")
+            save_human_decision(connection, exam_id, student_id, question_id, evaluation, action, final_score, notes)
+            exported_count = export_finalised_records(connection, output_path, exam_id=exam_id)
+            print(f"Recorded: {student_id} | {question_id}")
+            print(f"Exported {exported_count} finalised record(s) to {output_path}")
     finally:
         connection.close()
 

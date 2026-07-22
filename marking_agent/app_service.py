@@ -1,14 +1,16 @@
 from pathlib import Path
 
-from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH
+from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_OUTPUT_PATH, provider_settings
 from .grading import (
-    call_grading_agent,
-    create_openai_client,
     decimal_from_value,
     format_decimal,
+    grade_pdf_response,
+    grade_text_response,
     validate_score_range,
 )
+from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet
+from .pdf_submissions import FULL_SCRIPT_QUESTION_ID, load_pdf_submissions
 from .pdf_extract import extract_pdf_text, write_extracted_text
 from .state import (
     APPROVED,
@@ -23,7 +25,7 @@ from .state import (
     save_human_decision,
     save_provisional_evaluation,
 )
-from .storage import export_records_to_csv, load_mark_scheme, load_student_data
+from .storage import export_records_to_csv, load_mark_scheme
 
 
 class AppService:
@@ -33,7 +35,7 @@ class AppService:
         self.connection = connect_database(self.db_path)
         initialise_database(self.connection)
         self.exam_id = ensure_exam(self.connection, exam_id=exam_id, name=exam_name)
-        self._client = None
+        self._provider = None
 
     def close(self):
         self.connection.close()
@@ -50,23 +52,23 @@ class AppService:
         write_extracted_text(pages, Path(output_path))
         return pages
 
-    def load_exam_items(self, students_path):
-        student_data = load_student_data(Path(students_path))
+    def load_exam_items(self, submissions_path):
+        submissions = load_pdf_submissions(Path(submissions_path))
         items = []
-        for student_entry in student_data:
-            student_id = student_entry["student_id"]
-            for question_id, answer in student_entry["exam_responses"].items():
-                record = get_record(self.connection, self.exam_id, student_id, question_id)
-                status = record["status"] if record else "PENDING"
-                items.append(
-                    {
-                        "exam_id": self.exam_id,
-                        "student_id": student_id,
-                        "question_id": question_id,
-                        "answer": answer,
-                        "status": status,
-                    }
-                )
+        for submission in submissions:
+            student_id = submission["student_id"]
+            question_id = submission["question_id"]
+            record = get_record(self.connection, self.exam_id, student_id, question_id)
+            status = record["status"] if record else "PENDING"
+            items.append(
+                {
+                    "exam_id": self.exam_id,
+                    "student_id": student_id,
+                    "question_id": question_id,
+                    "pdf_path": submission["pdf_path"],
+                    "status": status,
+                }
+            )
         return items
 
     def get_saved_evaluation(self, student_id, question_id):
@@ -83,19 +85,30 @@ class AppService:
             return evaluation_from_record(record)
 
         mark_scheme = load_mark_scheme(Path(mark_scheme_path))
-        snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
+        if question_id == FULL_SCRIPT_QUESTION_ID:
+            snippet = mark_scheme
+        else:
+            snippet = extract_mark_scheme_snippet(mark_scheme, question_id)
 
-        if self._client is None:
-            self._client = create_openai_client()
+        if self._provider is None:
+            self._provider = build_provider(provider_settings(model))
 
-        evaluation = call_grading_agent(
-            self._client,
-            model,
-            student_id,
-            question_id,
-            item["answer"],
-            snippet,
-        )
+        if "pdf_path" in item:
+            evaluation = grade_pdf_response(
+                self._provider,
+                student_id,
+                question_id,
+                item["pdf_path"],
+                snippet,
+            )
+        else:
+            evaluation = grade_text_response(
+                self._provider,
+                student_id,
+                question_id,
+                item["answer"],
+                snippet,
+            )
         save_provisional_evaluation(self.connection, self.exam_id, student_id, question_id, evaluation, force=force)
         return evaluation
 

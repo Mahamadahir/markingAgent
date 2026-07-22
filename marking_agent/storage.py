@@ -14,32 +14,6 @@ def load_mark_scheme(path):
     return load_text_file(path, "Mark scheme")
 
 
-def load_student_data(path):
-    if not path.exists():
-        raise FileNotFoundError(f"Student exam file not found: {path}")
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        raise ValueError(f"Student exam file is not valid JSON: {error}") from error
-
-    validate_student_data(data)
-    return data
-
-
-def validate_student_data(data):
-    if not isinstance(data, list):
-        raise ValueError("Student exam file must contain a JSON array.")
-
-    for index, entry in enumerate(data, start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Student entry {index} must be an object.")
-        if not entry.get("student_id"):
-            raise ValueError(f"Student entry {index} is missing student_id.")
-        if not isinstance(entry.get("exam_responses"), dict):
-            raise ValueError(f"Student entry {index} must include exam_responses object.")
-
-
 def build_csv_row(student_id, question_id, evaluation, action, final_score, notes, exam_id="", exam_name=""):
     return {
         "Exam ID": exam_id,

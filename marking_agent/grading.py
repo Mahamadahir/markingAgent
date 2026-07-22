@@ -1,10 +1,12 @@
 import json
 from decimal import Decimal, InvalidOperation
 
+from .pdf_submissions import render_pdf_pages_as_data_urls
+
 
 GRADER_PROMPT = """You are a precise, objective academic grading assistant.
 
-Evaluate one student response against the provided mark scheme snippet only.
+Evaluate one student response against the provided mark scheme snippet only. The response may be typed text or handwritten PDF page images.
 Do not award marks for external knowledge or alternative correct answers unless the mark scheme explicitly permits them.
 Flag assertions, methodologies, or terminology that deviate from or contradict the mark scheme.
 Your evaluation is provisional and will be reviewed by a human marker.
@@ -51,17 +53,6 @@ GRADING_RESPONSE_SCHEMA = {
 }
 
 
-def create_openai_client():
-    try:
-        from openai import OpenAI
-    except ImportError as error:
-        raise RuntimeError(
-            "The openai package is not installed. Run: pip install -r requirements.txt"
-        ) from error
-
-    return OpenAI()
-
-
 def build_dispatch_payload(student_id, question_id, student_answer, mark_scheme_snippet):
     return f"""Student ID: {student_id}
 Question ID: {question_id}
@@ -73,26 +64,31 @@ STUDENT RESPONSE:
 {student_answer}"""
 
 
-def call_grading_agent(client, model, student_id, question_id, student_answer, mark_scheme_snippet):
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": GRADER_PROMPT},
-            {
-                "role": "user",
-                "content": build_dispatch_payload(
-                    student_id,
-                    question_id,
-                    student_answer,
-                    mark_scheme_snippet,
-                ),
-            },
-        ],
-        response_format={"type": "json_schema", "json_schema": GRADING_RESPONSE_SCHEMA},
-        temperature=0,
-    )
+def grade_text_response(provider, student_id, question_id, student_answer, mark_scheme_snippet):
+    user_text = build_dispatch_payload(student_id, question_id, student_answer, mark_scheme_snippet)
+    content = provider.complete_json(GRADER_PROMPT, user_text)
+    return parse_grading_response(content, student_id, question_id)
 
-    content = response.choices[0].message.content
+
+def build_pdf_dispatch_text(student_id, question_id, mark_scheme_snippet):
+    return f"""Student ID: {student_id}
+Question ID: {question_id}
+
+MARK SCHEME SNIPPET:
+{mark_scheme_snippet}
+
+STUDENT RESPONSE:
+The student's handwritten response is attached as page images from their submitted PDF. Read the handwriting directly from the images. If a page or answer is illegible, say so in the evidence and avoid awarding unsupported marks."""
+
+
+def grade_pdf_response(provider, student_id, question_id, response_pdf_path, mark_scheme_snippet):
+    image_urls = render_pdf_pages_as_data_urls(response_pdf_path)
+    user_text = build_pdf_dispatch_text(student_id, question_id, mark_scheme_snippet)
+    content = provider.complete_json(GRADER_PROMPT, user_text, image_urls)
+    return parse_grading_response(content, student_id, question_id)
+
+
+def parse_grading_response(content, student_id, question_id):
     try:
         evaluation = json.loads(content)
     except json.JSONDecodeError as error:

@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from .app_service import AppService, normalise_action
-from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH
+from .config import DEFAULT_DB_PATH, DEFAULT_EXAM_NAME, DEFAULT_MODEL_ENV, DEFAULT_OUTPUT_PATH, DEFAULT_SUBMISSIONS_PATH
 from .grading import render_evaluation
 from .state import APPROVED, OVERRIDDEN
 
@@ -36,8 +36,9 @@ def run():
         raise RuntimeError("Desktop UI requires PySide6. Run: pip install -r requirements.txt") from error
 
     class FilePicker(QWidget):
-        def __init__(self, label, placeholder):
+        def __init__(self, label, placeholder, mode="file"):
             super().__init__()
+            self.mode = mode
             self.input = QLineEdit()
             self.input.setPlaceholderText(placeholder)
             self.button = QPushButton("Choose")
@@ -49,7 +50,10 @@ def run():
             self.button.clicked.connect(self.choose_file)
 
         def choose_file(self):
-            path, _ = QFileDialog.getOpenFileName(self, "Choose file")
+            if self.mode == "directory":
+                path = QFileDialog.getExistingDirectory(self, "Choose folder")
+            else:
+                path, _ = QFileDialog.getOpenFileName(self, "Choose file")
             if path:
                 self.input.setText(path)
 
@@ -107,7 +111,7 @@ def run():
             self.exam_name = QLineEdit(DEFAULT_EXAM_NAME)
             self.mark_scheme_pdf = FilePicker("Mark scheme PDF", "data/input/mark_scheme.pdf")
             self.question_paper_pdf = FilePicker("Question paper PDF reference", "data/input/question_paper.pdf")
-            self.students_json = FilePicker("Student responses JSON", "students_exams.json")
+            self.submissions_path = FilePicker("Student response PDFs folder", str(DEFAULT_SUBMISSIONS_PATH), mode="directory")
             self.mark_scheme_text = FilePicker("Extracted mark scheme text", "data/extracted/mark_scheme.txt")
             self.database_path = QLineEdit(str(DEFAULT_DB_PATH))
             self.output_path = QLineEdit(str(DEFAULT_OUTPUT_PATH))
@@ -119,10 +123,10 @@ def run():
             exam_layout.addWidget(self.exam_name, 1, 0)
             layout.addWidget(self.card(exam_card))
 
-            self.students_json.set_text("students_exams.json")
+            self.submissions_path.set_text(DEFAULT_SUBMISSIONS_PATH)
             self.mark_scheme_text.set_text("data/extracted/mark_scheme.txt")
 
-            for widget in [self.mark_scheme_pdf, self.question_paper_pdf, self.students_json, self.mark_scheme_text]:
+            for widget in [self.mark_scheme_pdf, self.question_paper_pdf, self.submissions_path, self.mark_scheme_text]:
                 layout.addWidget(self.card(widget))
 
             paths_card = QFrame()
@@ -160,7 +164,7 @@ def run():
             self.extracted_text = QTextEdit()
             self.pdf_preview_note = QTextEdit()
             self.pdf_preview_note.setReadOnly(True)
-            self.pdf_preview_note.setText("Question paper stays as a PDF reference because exam papers are handwritten. Only review and edit extracted mark scheme text here.")
+            self.pdf_preview_note.setText("Question paper and student scripts stay as PDFs. Only the mark scheme is converted to text here.")
             splitter.addWidget(self.extracted_document_list)
             splitter.addWidget(self.extracted_text)
             splitter.addWidget(self.pdf_preview_note)
@@ -191,7 +195,7 @@ def run():
             self.student_answer.setReadOnly(True)
             self.ai_evaluation = QTextEdit()
             self.ai_evaluation.setReadOnly(True)
-            centre_layout.addWidget(QLabel("Student Answer"))
+            centre_layout.addWidget(QLabel("Student Response PDF"))
             centre_layout.addWidget(self.student_answer, 1)
             centre_layout.addWidget(QLabel("Provisional AI Evaluation"))
             centre_layout.addWidget(self.ai_evaluation, 1)
@@ -297,9 +301,9 @@ def run():
                     exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
                     mark_scheme_path=self.mark_scheme_text.text(),
                     question_paper_path=self.question_paper_pdf.text(),
-                    students_path=self.students_json.text(),
+                    students_path=self.submissions_path.text(),
                 )
-                self.exam_items = self.service.load_exam_items(self.students_json.text())
+                self.exam_items = self.service.load_exam_items(self.submissions_path.text())
                 self.item_list.clear()
                 for item in self.exam_items:
                     self.item_list.addItem(f"{item['student_id']} | {item['question_id']} | {item['status']}")
@@ -318,7 +322,7 @@ def run():
                 self.current_item["student_id"],
                 self.current_item["question_id"],
             )
-            self.student_answer.setPlainText(self.current_item["answer"])
+            self.student_answer.setPlainText(self.current_item["pdf_path"])
             self.ai_evaluation.setPlainText("")
             self.score_input.clear()
             self.notes_input.clear()
