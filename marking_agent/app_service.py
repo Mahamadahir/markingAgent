@@ -31,10 +31,13 @@ from .state import (
     initialise_database,
     iter_records,
     list_exams,
+    get_question_topics,
     save_human_decision,
     save_provisional_evaluation,
     set_exam_provider,
+    set_question_topics,
 )
+from .topics import extract_question_topics
 from .storage import export_records_to_csv, load_mark_scheme
 
 
@@ -127,6 +130,18 @@ class AppService:
 
     def list_models(self, settings):
         return build_provider(settings).list_models()
+
+    def extract_topics(self, settings, mark_scheme_path):
+        mark_scheme = load_mark_scheme(Path(mark_scheme_path))
+        question_ids = list_question_ids(mark_scheme)
+        if not question_ids:
+            return {}
+        topics = extract_question_topics(self.provider_for(settings), mark_scheme, question_ids)
+        set_question_topics(self.connection, self.exam_id, topics)
+        return topics
+
+    def question_topics(self):
+        return get_question_topics(self.connection, self.exam_id)
 
     def grade_item(self, settings, mark_scheme_path, item, force=False):
         return self.grade_item_with_models([settings], mark_scheme_path, item, force=force)

@@ -213,11 +213,14 @@ def run():
 
             actions = QHBoxLayout()
             extract_button = QPushButton("Extract Mark Scheme")
+            topics_button = QPushButton("Label Topics")
             load_button = QPushButton("Load Project")
             extract_button.clicked.connect(self.extract_project_pdfs)
+            topics_button.clicked.connect(self.label_topics)
             load_button.clicked.connect(self.load_project)
             actions.addStretch()
             actions.addWidget(extract_button)
+            actions.addWidget(topics_button)
             actions.addWidget(load_button)
             layout.addLayout(actions)
             layout.addStretch()
@@ -336,6 +339,20 @@ def run():
                 self.service.extract_pdf(self.mark_scheme_pdf.text(), output, ocr_mode=self.ocr_mode.currentText())
                 self.add_extracted_document(output)
                 QMessageBox.information(self, "Extraction complete", "Mark scheme text extraction finished. Question papers remain as PDF references.")
+            except Exception as error:
+                self.show_error(error)
+
+        def label_topics(self):
+            try:
+                if not self.mark_scheme_text.text():
+                    QMessageBox.warning(self, "Missing mark scheme", "Extract or choose the mark scheme text first.")
+                    return
+                topics = self.service.extract_topics(self.current_provider_settings(), self.mark_scheme_text.text())
+                if not topics:
+                    QMessageBox.information(self, "No topics", "No question headings found to label.")
+                    return
+                summary = "\n".join(f"{question_id}: {topic}" for question_id, topic in sorted(topics.items()))
+                QMessageBox.information(self, "Topics labelled", summary)
             except Exception as error:
                 self.show_error(error)
 

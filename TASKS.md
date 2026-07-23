@@ -12,6 +12,7 @@
 - Confidence flagging: each grade carries a model confidence; low-confidence provisional items sort to the top of the desktop review queue and are flagged, and confidence is included in the CSV export.
 - Model listing per provider: query the provider API with the entered key to populate the model dropdown (CLI `list-models`, desktop Fetch models button); Azure lists deployments so is entered manually.
 - Multi-model consensus: grade an item against several models (works with one key via different models from the same provider) and flag disagreements, which sort to the top of the review queue alongside low-confidence items.
+- Topic labelling per question: a model pass over the mark scheme returns a topic per question ID, stored against the exam (CLI `extract-topics`, desktop Label Topics button) and exported as a CSV Topic column.
 
 ## Next
 1. Verify Claude and Gemini against live APIs. Both paths are correct by construction but unproven; Gemini relies on prompt-injected schema rather than native enforcement, so it is the most likely to return malformed JSON. This now also covers the page classification pass.
@@ -41,7 +42,6 @@
 Note: the input items and any LMS integration are only worth building if the real workflow hits them. Do not build speculatively.
 
 ### Topics and history (exploring)
-- Topic labelling per question: tag each question with the topic it covers (model-derived in a pass over the mark scheme, or manual). Independent of the DB work; enables topic-level analytics and longitudinal feedback. Smallest, highest-value of this group — do first.
 - History-aware feedback sheets: generate per-student feedback from the student's stored structured records across all exams (finalised marks, topic tags, criteria breakdown, notes), not the raw scripts. The raw scripts never leave the grading step. Sourcing from the records is the data-minimising, cheaper (text not images), cross-exam-by-query version. Needs persistent student identity (roster mapping) and benefits from topic labelling. Data-protection note: even the structured history is sensitive personal data — decide provider/retention deliberately (see Azure OpenAI below).
 
 ## Final potential steps (institutional / multi-user)

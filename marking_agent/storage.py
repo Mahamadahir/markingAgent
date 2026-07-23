@@ -20,12 +20,13 @@ def format_confidence(evaluation):
     return "" if confidence is None else f"{confidence:.2f}"
 
 
-def build_csv_row(student_id, question_id, evaluation, action, final_score, notes, exam_id="", exam_name=""):
+def build_csv_row(student_id, question_id, evaluation, action, final_score, notes, exam_id="", exam_name="", topic=""):
     return {
         "Exam ID": exam_id,
         "Exam Name": exam_name,
         "Student ID": student_id,
         "Question ID": question_id,
+        "Topic": topic,
         "Provisional AI Output": json.dumps(evaluation, ensure_ascii=False, sort_keys=True),
         "Confidence": format_confidence(evaluation),
         "Human Action": action,
@@ -41,6 +42,7 @@ def record_to_csv_row(record):
         "Exam Name": record.get("exam_name", ""),
         "Student ID": record["student_id"],
         "Question ID": record["question_id"],
+        "Topic": record.get("topic") or "",
         "Provisional AI Output": record["provisional_ai_output"],
         "Confidence": format_confidence(evaluation),
         "Human Action": record["human_action"] or "",
