@@ -291,6 +291,16 @@ Final records are stored as:
 
 CSV is an export format, not the primary state store.
 
+## Analytics
+
+Cohort statistics are computed from finalised grades: average percent per question and per topic, the hardest questions, and per-student totals.
+
+```bash
+python main.py analytics --exam-id biology-paper-1
+```
+
+In the desktop app, the Analytics screen shows the same breakdowns in tables, with the hardest questions flagged. Topic rows use the labels from Topic Labelling; questions with no topic are grouped as Untagged.
+
 ## CSV Export
 
 Export finalised records:

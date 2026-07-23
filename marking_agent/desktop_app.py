@@ -94,8 +94,9 @@ def run():
             self.stack = QStackedWidget()
             self.nav = QListWidget()
             self.nav.setFixedWidth(240)
-            self.nav.addItems(["Project Setup", "Extraction Review", "Grading Workspace", "Results"])
+            self.nav.addItems(["Project Setup", "Extraction Review", "Grading Workspace", "Results", "Analytics"])
             self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+            self.nav.currentRowChanged.connect(self.on_nav_changed)
 
             root = QWidget()
             root_layout = QHBoxLayout(root)
@@ -107,6 +108,7 @@ def run():
             self.extraction_screen()
             self.grading_screen()
             self.results_screen()
+            self.analytics_screen()
 
             self.setCentralWidget(root)
             self.nav.setCurrentRow(0)
@@ -327,6 +329,77 @@ def run():
             self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             layout.addWidget(self.results_table, 1)
             self.stack.addWidget(screen)
+
+        def analytics_screen(self):
+            screen = QWidget()
+            layout = QVBoxLayout(screen)
+            layout.setContentsMargins(20, 20, 20, 20)
+            header = QHBoxLayout()
+            title = QLabel("Analytics")
+            title.setObjectName("title")
+            refresh_button = QPushButton("Refresh")
+            refresh_button.clicked.connect(self.refresh_analytics)
+            header.addWidget(title)
+            header.addStretch()
+            header.addWidget(refresh_button)
+            layout.addLayout(header)
+
+            self.question_stats_table = self.stats_table(["Question", "Topic", "Graded", "Average %"])
+            self.topic_stats_table = self.stats_table(["Topic", "Graded", "Average %"])
+            self.student_stats_table = self.stats_table(["Student", "Questions", "Score", "Percent"])
+            layout.addWidget(QLabel("By question"))
+            layout.addWidget(self.question_stats_table, 1)
+            layout.addWidget(QLabel("By topic"))
+            layout.addWidget(self.topic_stats_table, 1)
+            layout.addWidget(QLabel("Student totals"))
+            layout.addWidget(self.student_stats_table, 1)
+            self.stack.addWidget(screen)
+
+        def stats_table(self, headers):
+            table = QTableWidget(0, len(headers))
+            table.setHorizontalHeaderLabels(headers)
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            return table
+
+        def on_nav_changed(self, index):
+            item = self.nav.item(index)
+            if item and item.text() == "Analytics":
+                try:
+                    self.refresh_analytics()
+                except Exception as error:
+                    self.show_error(error)
+
+        def refresh_analytics(self):
+            data = self.service.analytics()
+            hardest = {stat["question_id"] for stat in data["hardest"]}
+            self.fill_table(
+                self.question_stats_table,
+                [
+                    [stat["question_id"], stat["topic"], str(stat["count"]), f"{stat['average_percent']}"]
+                    for stat in data["questions"]
+                ],
+                flag_rows=[stat["question_id"] in hardest for stat in data["questions"]],
+            )
+            self.fill_table(
+                self.topic_stats_table,
+                [[stat["topic"], str(stat["count"]), f"{stat['average_percent']}"] for stat in data["topics"]],
+            )
+            self.fill_table(
+                self.student_stats_table,
+                [
+                    [stat["student_id"], str(stat["questions"]), f"{stat['awarded']}/{stat['available']}", f"{stat['percent']}"]
+                    for stat in data["students"]
+                ],
+            )
+
+        def fill_table(self, table, rows, flag_rows=None):
+            table.setRowCount(len(rows))
+            for row_index, values in enumerate(rows):
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if flag_rows and flag_rows[row_index]:
+                        item.setForeground(Qt.red)
+                    table.setItem(row_index, column, item)
 
         def card(self, widget):
             frame = QFrame()

@@ -12,7 +12,8 @@
 - Confidence flagging: each grade carries a model confidence; low-confidence provisional items sort to the top of the desktop review queue and are flagged, and confidence is included in the CSV export.
 - Model listing per provider: query the provider API with the entered key to populate the model dropdown (CLI `list-models`, desktop Fetch models button); Azure lists deployments so is entered manually.
 - Multi-model consensus: grade an item against several models (works with one key via different models from the same provider) and flag disagreements, which sort to the top of the review queue alongside low-confidence items.
-- Topic labelling per question: a model pass over the mark scheme returns a topic per question ID, stored against the exam (CLI `extract-topics`, desktop Label Topics button) and exported as a CSV Topic column.
+- Topic labelling per question: a model pass over the mark scheme returns a topic per question ID, stored against the exam (CLI `extract-topics`, desktop Label Topics button) and exported as a CSV Topic column. Topics editable by hand in the desktop.
+- Cohort analytics: average percent per question and per topic, hardest questions, and per-student totals from finalised grades (CLI `analytics`, desktop Analytics screen).
 
 ## Next
 1. Verify Claude and Gemini against live APIs. Both paths are correct by construction but unproven; Gemini relies on prompt-injected schema rather than native enforcement, so it is the most likely to return malformed JSON. This now also covers the page classification pass.
@@ -31,7 +32,6 @@
 
 ### Outputs
 - Per-student feedback sheets (marks, per-criterion breakdown, deviation notes) as PDF or markdown.
-- Cohort analytics: mark distribution per question, hardest questions, per-student totals.
 - Excel export alongside CSV.
 
 ### Inputs
