@@ -154,6 +154,16 @@ python main.py grade \
 
 The model output is provisional. The CLI requires a human to approve or override every score before it becomes final.
 
+### Topic Labelling
+
+Each mark scheme question can be labelled with the topic it assesses. A one-off model pass reads the mark scheme and returns a topic per question ID, stored against the exam:
+
+```bash
+python main.py extract-topics --exam-name "Biology Paper 1" --mark-scheme data/extracted/biology_paper_1_mark_scheme.txt
+```
+
+In the desktop app, the Label Topics button on Project Setup runs the same pass with the selected provider, and the Edit Topics button opens a table for reviewing and changing each question's topic by hand. Topics appear as a Topic column in the CSV export. They are a foundation for later topic-level analytics and history-based feedback.
+
 ### Confidence Flagging
 
 Each evaluation includes a confidence between 0 and 1 for how certain the model is of the proposed marks. Low confidence signals illegible handwriting, an ambiguous answer, or a mark scheme that does not clearly cover the response. Confidence appears in the provisional evaluation output and in the CSV export, and low-confidence items are flagged.

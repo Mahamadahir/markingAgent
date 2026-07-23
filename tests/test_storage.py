@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from marking_agent.state import APPROVED, iter_records, save_human_decision
+from marking_agent.state import APPROVED, iter_records, save_human_decision, set_question_topics
 from marking_agent.storage import build_csv_row, export_records_to_csv
 from tests.helpers import create_test_database, sample_evaluation
 
@@ -36,6 +36,7 @@ class StorageTests(unittest.TestCase):
                 "Approved AI assessment.",
             )
 
+            set_question_topics(connection, "default", {"Q1": "Photosynthesis"})
             export_records_to_csv(iter_records(connection, final_only=True), csv_path)
 
             with csv_path.open("r", newline="", encoding="utf-8") as file:
@@ -44,6 +45,7 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(rows[0]["Student ID"], "STUDENT_001")
             self.assertEqual(rows[0]["Human Action"], APPROVED)
             self.assertEqual(rows[0]["Final Score"], "2")
+            self.assertEqual(rows[0]["Topic"], "Photosynthesis")
 
 
 if __name__ == "__main__":

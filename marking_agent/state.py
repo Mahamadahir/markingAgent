@@ -23,6 +23,7 @@ def initialise_database(connection):
     ensure_exam_columns(connection)
     ensure_default_exam(connection)
     ensure_grading_records_table(connection)
+    create_question_topics_table(connection)
     connection.commit()
 
 
@@ -126,6 +127,40 @@ def create_grading_records_table(connection):
         )
         """
     )
+
+
+def create_question_topics_table(connection):
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS question_topics (
+            exam_id TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            topic TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (exam_id, question_id)
+        )
+        """
+    )
+
+
+def set_question_topics(connection, exam_id, topics):
+    for question_id, topic in topics.items():
+        connection.execute(
+            """
+            INSERT INTO question_topics (exam_id, question_id, topic)
+            VALUES (?, ?, ?)
+            ON CONFLICT(exam_id, question_id) DO UPDATE SET topic = excluded.topic
+            """,
+            (exam_id, question_id, topic),
+        )
+    connection.commit()
+
+
+def get_question_topics(connection, exam_id):
+    cursor = connection.execute(
+        "SELECT question_id, topic FROM question_topics WHERE exam_id = ?",
+        (exam_id,),
+    )
+    return {row["question_id"]: row["topic"] for row in cursor.fetchall()}
 
 
 def table_exists(connection, table_name):
@@ -359,9 +394,12 @@ def iter_records(connection, exam_id=None, final_only=False):
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
     cursor = connection.execute(
         f"""
-        SELECT grading_records.*, exams.name AS exam_name
+        SELECT grading_records.*, exams.name AS exam_name, question_topics.topic AS topic
         FROM grading_records
         LEFT JOIN exams ON exams.exam_id = grading_records.exam_id
+        LEFT JOIN question_topics
+            ON question_topics.exam_id = grading_records.exam_id
+            AND question_topics.question_id = grading_records.question_id
         {where_clause}
         ORDER BY exams.name, grading_records.student_id, grading_records.question_id
         """,

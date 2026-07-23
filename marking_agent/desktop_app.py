@@ -28,6 +28,8 @@ def run():
             QApplication,
             QCheckBox,
             QComboBox,
+            QDialog,
+            QDialogButtonBox,
             QFileDialog,
             QFrame,
             QGridLayout,
@@ -213,11 +215,17 @@ def run():
 
             actions = QHBoxLayout()
             extract_button = QPushButton("Extract Mark Scheme")
+            topics_button = QPushButton("Label Topics")
+            edit_topics_button = QPushButton("Edit Topics")
             load_button = QPushButton("Load Project")
             extract_button.clicked.connect(self.extract_project_pdfs)
+            topics_button.clicked.connect(self.label_topics)
+            edit_topics_button.clicked.connect(self.edit_topics)
             load_button.clicked.connect(self.load_project)
             actions.addStretch()
             actions.addWidget(extract_button)
+            actions.addWidget(topics_button)
+            actions.addWidget(edit_topics_button)
             actions.addWidget(load_button)
             layout.addLayout(actions)
             layout.addStretch()
@@ -338,6 +346,70 @@ def run():
                 QMessageBox.information(self, "Extraction complete", "Mark scheme text extraction finished. Question papers remain as PDF references.")
             except Exception as error:
                 self.show_error(error)
+
+        def label_topics(self):
+            try:
+                if not self.mark_scheme_text.text():
+                    QMessageBox.warning(self, "Missing mark scheme", "Extract or choose the mark scheme text first.")
+                    return
+                self.service.set_exam(
+                    exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
+                    mark_scheme_path=self.mark_scheme_text.text(),
+                )
+                topics = self.service.extract_topics(self.current_provider_settings(), self.mark_scheme_text.text())
+                if not topics:
+                    QMessageBox.information(self, "No topics", "No question headings found to label.")
+                    return
+                summary = "\n".join(f"{question_id}: {topic}" for question_id, topic in sorted(topics.items()))
+                QMessageBox.information(self, "Topics labelled", summary)
+            except Exception as error:
+                self.show_error(error)
+
+        def edit_topics(self):
+            try:
+                if not self.mark_scheme_text.text():
+                    QMessageBox.warning(self, "Missing mark scheme", "Extract or choose the mark scheme text first.")
+                    return
+                self.service.set_exam(
+                    exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
+                    mark_scheme_path=self.mark_scheme_text.text(),
+                )
+                rows = self.service.topics_for_editing(self.mark_scheme_text.text())
+                if not rows:
+                    QMessageBox.information(self, "No questions", "No question headings found in the mark scheme.")
+                    return
+                topics = self.prompt_topic_edits(rows)
+                if topics is None:
+                    return
+                self.service.save_question_topics(topics)
+                QMessageBox.information(self, "Topics saved", "Topic edits saved.")
+            except Exception as error:
+                self.show_error(error)
+
+        def prompt_topic_edits(self, rows):
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Edit Topics")
+            dialog.resize(480, 360)
+            layout = QVBoxLayout(dialog)
+            table = QTableWidget(len(rows), 2)
+            table.setHorizontalHeaderLabels(["Question", "Topic"])
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            for row, (question_id, topic) in enumerate(rows):
+                identifier = QTableWidgetItem(question_id)
+                identifier.setFlags(identifier.flags() & ~Qt.ItemIsEditable)
+                table.setItem(row, 0, identifier)
+                table.setItem(row, 1, QTableWidgetItem(topic))
+            layout.addWidget(table)
+            buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            return {
+                table.item(row, 0).text(): table.item(row, 1).text().strip()
+                for row in range(table.rowCount())
+            }
 
         def add_extracted_document(self, path):
             item = QListWidgetItem(str(path))

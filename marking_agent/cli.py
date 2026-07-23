@@ -44,8 +44,10 @@ from .state import (
     save_human_decision,
     save_provisional_evaluation,
     set_exam_provider,
+    set_question_topics,
 )
 from .storage import export_records_to_csv, load_mark_scheme
+from .topics import extract_question_topics
 
 
 def parse_args():
@@ -80,6 +82,17 @@ def parse_args():
     models_parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
     models_parser.add_argument("--azure-endpoint", default=None)
     models_parser.add_argument("--azure-api-version", default=None)
+
+    topics_parser = subparsers.add_parser("extract-topics", help="Label each mark scheme question with its topic.")
+    topics_parser.add_argument("--exam-id", type=str, default="")
+    topics_parser.add_argument("--exam-name", type=str, default=DEFAULT_EXAM_NAME)
+    topics_parser.add_argument("--mark-scheme", type=str, default=str(DEFAULT_MARK_SCHEME_PATH))
+    topics_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
+    topics_parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
+    topics_parser.add_argument("--api-key", default=None)
+    topics_parser.add_argument("--model", default=DEFAULT_MODEL_ENV)
+    topics_parser.add_argument("--azure-endpoint", default=None)
+    topics_parser.add_argument("--azure-api-version", default=None)
 
     add_grading_arguments(parser)
     return parser.parse_args()
@@ -295,6 +308,33 @@ def list_models_command(args):
         print(model)
 
 
+def extract_topics_command(args):
+    connection = connect_database(Path(args.db))
+    initialise_database(connection)
+    try:
+        exam_id = ensure_exam(connection, exam_id=args.exam_id or None, name=args.exam_name)
+        mark_scheme = load_mark_scheme(Path(args.mark_scheme))
+        question_ids = list_question_ids(mark_scheme)
+        if not question_ids:
+            print("No question headings found in the mark scheme; nothing to label.")
+            return
+        provider = build_provider(
+            provider_settings(
+                args.model,
+                args.provider,
+                api_key=args.api_key,
+                azure_endpoint=args.azure_endpoint,
+                azure_api_version=args.azure_api_version,
+            )
+        )
+        topics = extract_question_topics(provider, mark_scheme, question_ids)
+        set_question_topics(connection, exam_id, topics)
+        for question_id in question_ids:
+            print(f"{question_id}\t{topics.get(question_id, '')}")
+    finally:
+        connection.close()
+
+
 def main():
     args = parse_args()
     command = args.command or "grade"
@@ -308,6 +348,8 @@ def main():
             list_exams_command(args)
         elif command == "list-models":
             list_models_command(args)
+        elif command == "extract-topics":
+            extract_topics_command(args)
         else:
             grade_all(args)
     except (FileNotFoundError, RuntimeError, ValueError) as error:
