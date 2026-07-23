@@ -23,6 +23,7 @@ from .grading import (
 )
 from .page_mapping import ScriptPages
 from .providers import build_provider
+from .analytics import hardest_questions, question_statistics, student_totals, topic_statistics
 from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
 from .pdf_extract import OCR_MODES, extract_pdf_text, write_extracted_text
 from .pdf_submissions import (
@@ -75,6 +76,10 @@ def parse_args():
 
     list_parser = subparsers.add_parser("list-exams", help="List exams in the SQLite state database.")
     list_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
+
+    analytics_parser = subparsers.add_parser("analytics", help="Show cohort statistics from finalised grades.")
+    analytics_parser.add_argument("--db", type=str, default=str(DEFAULT_DB_PATH))
+    analytics_parser.add_argument("--exam-id", type=str, default="")
 
     models_parser = subparsers.add_parser("list-models", help="List models available for a provider API key.")
     models_parser.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
@@ -335,6 +340,35 @@ def extract_topics_command(args):
         connection.close()
 
 
+def analytics_command(args):
+    connection = connect_database(Path(args.db))
+    initialise_database(connection)
+    try:
+        records = iter_records(connection, exam_id=args.exam_id or None, final_only=True)
+    finally:
+        connection.close()
+    if not records:
+        print("No finalised grades to report.")
+        return
+
+    questions = question_statistics(records)
+    print("Question\tTopic\tGraded\tAverage %")
+    for stat in questions:
+        print(f"{stat['question_id']}\t{stat['topic'] or '-'}\t{stat['count']}\t{stat['average_percent']}")
+
+    print("\nTopic\tGraded\tAverage %")
+    for stat in topic_statistics(records):
+        print(f"{stat['topic']}\t{stat['count']}\t{stat['average_percent']}")
+
+    print("\nHardest questions:")
+    for stat in hardest_questions(questions):
+        print(f"{stat['question_id']} ({stat['topic'] or '-'}): {stat['average_percent']}%")
+
+    print("\nStudent\tQuestions\tScore\tPercent")
+    for stat in student_totals(records):
+        print(f"{stat['student_id']}\t{stat['questions']}\t{stat['awarded']}/{stat['available']}\t{stat['percent']}")
+
+
 def main():
     args = parse_args()
     command = args.command or "grade"
@@ -350,6 +384,8 @@ def main():
             list_models_command(args)
         elif command == "extract-topics":
             extract_topics_command(args)
+        elif command == "analytics":
+            analytics_command(args)
         else:
             grade_all(args)
     except (FileNotFoundError, RuntimeError, ValueError) as error:

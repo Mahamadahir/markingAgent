@@ -11,6 +11,7 @@ from .grading import (
     needs_review,
     validate_score_range,
 )
+from .analytics import hardest_questions, question_statistics, student_totals, topic_statistics
 from .page_mapping import ScriptPages
 from .providers import build_provider
 from .mark_scheme import extract_mark_scheme_snippet, list_question_ids
@@ -217,6 +218,16 @@ class AppService:
 
     def records(self, final_only=False, exam_id=None):
         return iter_records(self.connection, exam_id=exam_id or self.exam_id, final_only=final_only)
+
+    def analytics(self, exam_id=None):
+        records = iter_records(self.connection, exam_id=exam_id or self.exam_id, final_only=True)
+        questions = question_statistics(records)
+        return {
+            "questions": questions,
+            "topics": topic_statistics(records),
+            "students": student_totals(records),
+            "hardest": hardest_questions(questions),
+        }
 
 
 def review_sort_key(item):

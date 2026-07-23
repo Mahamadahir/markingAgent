@@ -7,7 +7,7 @@ from marking_agent import app_service
 from marking_agent.app_service import AppService, normalise_action, review_sort_key
 from marking_agent.pdf_submissions import FULL_SCRIPT_QUESTION_ID
 from marking_agent.state import APPROVED, OVERRIDDEN, save_provisional_evaluation
-from tests.helpers import FakeProvider, full_script_evaluation, write_submissions
+from tests.helpers import FakeProvider, full_script_evaluation, sample_evaluation, write_submissions
 
 
 class NormaliseActionTests(unittest.TestCase):
@@ -96,6 +96,18 @@ class AppServiceTests(unittest.TestCase):
             self.assertEqual(topics, {"Q1": "Kinematics"})
             self.assertEqual(service.question_topics(), {"Q1": "Kinematics"})
             self.assertIsNone(service.stored_provider())
+
+    def test_analytics_summarises_finalised_topic_tagged_records(self):
+        with tempfile.TemporaryDirectory() as raw:
+            service = self.build_service(Path(raw))
+            service.save_question_topics({"Q1": "Kinematics"})
+            service.save_decision("STUDENT_001", "Q1", sample_evaluation(), APPROVED, "2", "ok")
+
+            data = service.analytics()
+
+            self.assertEqual(data["questions"][0]["topic"], "Kinematics")
+            self.assertEqual(data["questions"][0]["average_percent"], 100.0)
+            self.assertEqual(data["students"][0]["student_id"], "STUDENT_001")
 
     def test_topics_for_editing_lists_questions_with_stored_topics(self):
         with tempfile.TemporaryDirectory() as raw:
