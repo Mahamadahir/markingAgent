@@ -96,6 +96,7 @@ def run():
             self.nav.setFixedWidth(240)
             self.nav.addItems(["Project Setup", "Extraction Review", "Grading Workspace", "Results", "Analytics"])
             self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+            self.nav.currentRowChanged.connect(self.on_nav_changed)
 
             root = QWidget()
             root_layout = QHBoxLayout(root)
@@ -360,13 +361,21 @@ def run():
             table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             return table
 
+        def on_nav_changed(self, index):
+            item = self.nav.item(index)
+            if item and item.text() == "Analytics":
+                try:
+                    self.refresh_analytics()
+                except Exception as error:
+                    self.show_error(error)
+
         def refresh_analytics(self):
             data = self.service.analytics()
             hardest = {stat["question_id"] for stat in data["hardest"]}
             self.fill_table(
                 self.question_stats_table,
                 [
-                    [stat["question_id"], stat["topic"] or "-", str(stat["count"]), f"{stat['average_percent']}"]
+                    [stat["question_id"], stat["topic"], str(stat["count"]), f"{stat['average_percent']}"]
                     for stat in data["questions"]
                 ],
                 flag_rows=[stat["question_id"] in hardest for stat in data["questions"]],

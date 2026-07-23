@@ -354,7 +354,7 @@ def analytics_command(args):
     questions = question_statistics(records)
     print("Question\tTopic\tGraded\tAverage %")
     for stat in questions:
-        print(f"{stat['question_id']}\t{stat['topic'] or '-'}\t{stat['count']}\t{stat['average_percent']}")
+        print(f"{stat['question_id']}\t{stat['topic']}\t{stat['count']}\t{stat['average_percent']}")
 
     print("\nTopic\tGraded\tAverage %")
     for stat in topic_statistics(records):
@@ -362,7 +362,7 @@ def analytics_command(args):
 
     print("\nHardest questions:")
     for stat in hardest_questions(questions):
-        print(f"{stat['question_id']} ({stat['topic'] or '-'}): {stat['average_percent']}%")
+        print(f"{stat['question_id']} ({stat['topic']}): {stat['average_percent']}%")
 
     print("\nStudent\tQuestions\tScore\tPercent")
     for stat in student_totals(records):

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import tempfile
 import unittest
 from decimal import Decimal
@@ -7,8 +9,43 @@ from unittest import mock
 
 from marking_agent import cli
 from marking_agent.pdf_submissions import FULL_SCRIPT_QUESTION_ID
-from marking_agent.state import APPROVED, OVERRIDDEN, get_record, save_human_decision, save_provisional_evaluation
+from marking_agent.state import (
+    APPROVED,
+    OVERRIDDEN,
+    get_record,
+    save_human_decision,
+    save_provisional_evaluation,
+    set_question_topics,
+)
 from tests.helpers import QuietStdoutMixin, create_test_database, sample_evaluation
+
+
+class AnalyticsCommandTests(unittest.TestCase):
+    def _run(self, db_path):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli.analytics_command(SimpleNamespace(db=str(db_path), exam_id=""))
+        return buffer.getvalue()
+
+    def test_reports_no_finalised_grades(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.sqlite3"
+            create_test_database(path).close()
+
+            self.assertIn("No finalised grades", self._run(path))
+
+    def test_reports_question_and_topic_statistics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.sqlite3"
+            connection = create_test_database(path)
+            save_human_decision(connection, "default", "STUDENT_001", "Q1", sample_evaluation(), APPROVED, "2", "note")
+            set_question_topics(connection, "default", {"Q1": "Photosynthesis"})
+            connection.close()
+
+            output = self._run(path)
+
+            self.assertIn("Q1", output)
+            self.assertIn("Photosynthesis", output)
 
 
 class CliLogicTests(QuietStdoutMixin, unittest.TestCase):

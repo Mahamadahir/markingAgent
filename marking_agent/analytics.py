@@ -26,7 +26,13 @@ def question_statistics(records):
         awarded, available = record_marks(record)
         group = groups.setdefault(
             record["question_id"],
-            {"question_id": record["question_id"], "topic": record.get("topic") or "", "awarded": Decimal(0), "available": Decimal(0), "count": 0},
+            {
+                "question_id": record["question_id"],
+                "topic": (record.get("topic") or "").strip() or UNTAGGED_TOPIC,
+                "awarded": Decimal(0),
+                "available": Decimal(0),
+                "count": 0,
+            },
         )
         group["awarded"] += awarded
         group["available"] += available
