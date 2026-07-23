@@ -347,6 +347,10 @@ def run():
                 if not self.mark_scheme_text.text():
                     QMessageBox.warning(self, "Missing mark scheme", "Extract or choose the mark scheme text first.")
                     return
+                self.service.set_exam(
+                    exam_name=self.exam_name.text().strip() or DEFAULT_EXAM_NAME,
+                    mark_scheme_path=self.mark_scheme_text.text(),
+                )
                 topics = self.service.extract_topics(self.current_provider_settings(), self.mark_scheme_text.text())
                 if not topics:
                     QMessageBox.information(self, "No topics", "No question headings found to label.")

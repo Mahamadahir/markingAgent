@@ -80,6 +80,23 @@ class AppServiceTests(unittest.TestCase):
 
             self.assertIsNone(service.stored_provider())
 
+    def test_extract_topics_stores_topics_without_persisting_provider(self):
+        from marking_agent.config import provider_settings
+
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            mark_scheme_path = directory / "scheme.txt"
+            mark_scheme_path.write_text("# Q1\nmarks\n\n# Q2\nmarks", encoding="utf-8")
+            service = self.build_service(directory)
+            provider = FakeProvider({"topics": [{"question_id": "Q1", "topic": "Kinematics"}]})
+
+            with mock.patch.object(app_service, "build_provider", return_value=provider):
+                topics = service.extract_topics(provider_settings("gpt-4o", provider="openai"), mark_scheme_path)
+
+            self.assertEqual(topics, {"Q1": "Kinematics"})
+            self.assertEqual(service.question_topics(), {"Q1": "Kinematics"})
+            self.assertIsNone(service.stored_provider())
+
     def test_grade_item_with_models_records_consensus(self):
         from marking_agent.config import provider_settings
 

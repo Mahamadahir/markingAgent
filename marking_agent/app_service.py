@@ -136,7 +136,7 @@ class AppService:
         question_ids = list_question_ids(mark_scheme)
         if not question_ids:
             return {}
-        topics = extract_question_topics(self.provider_for(settings), mark_scheme, question_ids)
+        topics = extract_question_topics(build_provider(settings), mark_scheme, question_ids)
         set_question_topics(self.connection, self.exam_id, topics)
         return topics
 

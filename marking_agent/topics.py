@@ -51,8 +51,8 @@ def parse_topics(content, question_ids):
     data = json.loads(content)
     topics = {}
     for entry in data.get("topics", []):
-        question_id = normalise_question_id(entry.get("question_id", ""))
-        topic = entry.get("topic", "").strip()
+        question_id = normalise_question_id(entry.get("question_id") or "")
+        topic = (entry.get("topic") or "").strip()
         if question_id in known and topic:
             topics[question_id] = topic
     return topics
