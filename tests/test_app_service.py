@@ -97,6 +97,19 @@ class AppServiceTests(unittest.TestCase):
             self.assertEqual(service.question_topics(), {"Q1": "Kinematics"})
             self.assertIsNone(service.stored_provider())
 
+    def test_topics_for_editing_lists_questions_with_stored_topics(self):
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            mark_scheme_path = directory / "scheme.txt"
+            mark_scheme_path.write_text("# Q1\nmarks\n\n# Q2\nmarks", encoding="utf-8")
+            service = self.build_service(directory)
+            service.save_question_topics({"Q1": "Kinematics"})
+
+            self.assertEqual(
+                service.topics_for_editing(mark_scheme_path),
+                [("Q1", "Kinematics"), ("Q2", "")],
+            )
+
     def test_grade_item_with_models_records_consensus(self):
         from marking_agent.config import provider_settings
 

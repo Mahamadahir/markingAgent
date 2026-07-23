@@ -143,6 +143,14 @@ class AppService:
     def question_topics(self):
         return get_question_topics(self.connection, self.exam_id)
 
+    def topics_for_editing(self, mark_scheme_path):
+        stored = get_question_topics(self.connection, self.exam_id)
+        question_ids = list_question_ids(load_mark_scheme(Path(mark_scheme_path)))
+        return [(question_id, stored.get(question_id, "")) for question_id in question_ids]
+
+    def save_question_topics(self, topics):
+        set_question_topics(self.connection, self.exam_id, topics)
+
     def grade_item(self, settings, mark_scheme_path, item, force=False):
         return self.grade_item_with_models([settings], mark_scheme_path, item, force=force)
 

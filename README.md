@@ -162,7 +162,7 @@ Each mark scheme question can be labelled with the topic it assesses. A one-off 
 python main.py extract-topics --exam-name "Biology Paper 1" --mark-scheme data/extracted/biology_paper_1_mark_scheme.txt
 ```
 
-In the desktop app, the Label Topics button on Project Setup runs the same pass with the selected provider. Topics appear as a Topic column in the CSV export. They are a foundation for later topic-level analytics and history-based feedback.
+In the desktop app, the Label Topics button on Project Setup runs the same pass with the selected provider, and the Edit Topics button opens a table for reviewing and changing each question's topic by hand. Topics appear as a Topic column in the CSV export. They are a foundation for later topic-level analytics and history-based feedback.
 
 ### Confidence Flagging
 
